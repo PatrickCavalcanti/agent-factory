@@ -11,6 +11,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { criarProvedorDeCliente } from '../src/nucleo/index.js';
 
+// O Igris passa 'module:executor' (antes era o padrão do pacote; agora é obrigatório).
+const CONSUMER_IGRIS = 'module:executor';
+
 const contaGateway = { protocol: 'gateway', id: 'acc-gw' };
 const protocoloFake = () => ({ decide: async () => ({ answers: {} }) });
 
@@ -19,7 +22,7 @@ test('criarProvedorDeCliente: listarContas é obrigatório', () => {
 });
 
 test('obter: sem conta gateway devolve null sem lançar', async () => {
-  const provedor = criarProvedorDeCliente({ listarContas: async () => [], criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas: async () => [], criarProtocoloDoGateway: protocoloFake });
   const c = await provedor.obter();
   assert.equal(c, null);
 });
@@ -28,7 +31,7 @@ test('obter: listarContas() lançando também devolve null sem lançar', async (
   const avisoOriginal = console.warn;
   console.warn = () => {};
   try {
-    const provedor = criarProvedorDeCliente({
+    const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS,
       listarContas: async () => { throw new Error('banco fora do ar'); },
       criarProtocoloDoGateway: protocoloFake,
     });
@@ -41,7 +44,7 @@ test('obter: listarContas() lançando também devolve null sem lançar', async (
 
 test('obter: com conta gateway, devolve cliente com decidir()', async () => {
   const listarContas = async () => [contaGateway];
-  const provedor = criarProvedorDeCliente({ listarContas, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas, criarProtocoloDoGateway: protocoloFake });
   const c = await provedor.obter();
   assert.ok(c && typeof c.decidir === 'function');
 });
@@ -49,7 +52,7 @@ test('obter: com conta gateway, devolve cliente com decidir()', async () => {
 test('obter: cache só de sucesso — chamada seguinte nem consulta contas de novo', async () => {
   let chamadas = 0;
   const listarContas = async () => { chamadas++; return [contaGateway]; };
-  const provedor = criarProvedorDeCliente({ listarContas, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas, criarProtocoloDoGateway: protocoloFake });
   const c1 = await provedor.obter();
   const c2 = await provedor.obter({ listarContas: async () => { throw new Error('não deveria consultar — sucesso deveria estar cacheado'); } });
   assert.equal(c1, c2);
@@ -61,7 +64,7 @@ test('obter: falha não cacheia e só tenta de novo depois de 60s (relógio inje
   const semConta = async () => { chamadas++; return []; };
   let t = 1_000_000;
   const agora = () => t;
-  const provedor = criarProvedorDeCliente({ listarContas: semConta, agora, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas: semConta, agora, criarProtocoloDoGateway: protocoloFake });
 
   const c1 = await provedor.obter();
   assert.equal(c1, null);
@@ -90,7 +93,7 @@ test('obter: marcarFalha:false não marca a janela de retry — a chamada seguin
   const semConta = async () => { chamadas++; return []; };
   let t = 1_000_000;
   const agora = () => t;
-  const provedor = criarProvedorDeCliente({ listarContas: semConta, agora, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas: semConta, agora, criarProtocoloDoGateway: protocoloFake });
 
   const c1 = await provedor.obter({ marcarFalha: false });
   assert.equal(c1, null);
@@ -108,7 +111,7 @@ test('obter: marcarFalha default (true) continua marcando a janela de retry norm
   const semConta = async () => { chamadas++; return []; };
   let t = 1_000_000;
   const agora = () => t;
-  const provedor = criarProvedorDeCliente({ listarContas: semConta, agora, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas: semConta, agora, criarProtocoloDoGateway: protocoloFake });
 
   const c1 = await provedor.obter();
   assert.equal(c1, null);
@@ -120,32 +123,19 @@ test('obter: marcarFalha default (true) continua marcando a janela de retry norm
   assert.equal(chamadas, 1, 'dentro da janela, não deveria ter tentado de novo');
 });
 
-// M-1 (segunda revisão final): a chave da env só vale com opt-in explícito
-// (IGRIS_TEST=1 / NODE_ENV=test / IGRIS_DECISOES_BANCADA=1) — sem isso o Igris empacotado
-// (que nunca seta NODE_ENV=production) contornava o gateway em silêncio. Prova completa das
-// três variantes em `provedor-gateway.test.js`; aqui só confere que o opt-in de bancada
-// funciona neste outro arquivo de teste também.
-test('obter: IGRIS_DECISOES_CHAVE (env) sobrepõe listarContas quando IGRIS_DECISOES_BANCADA=1', async () => {
-  const chaveOriginal = process.env.IGRIS_DECISOES_CHAVE;
-  const bancadaOriginal = process.env.IGRIS_DECISOES_BANCADA;
-  process.env.IGRIS_DECISOES_CHAVE = 'sk-env-999';
-  process.env.IGRIS_DECISOES_BANCADA = '1';
-  try {
-    const provedor = criarProvedorDeCliente({ listarContas: async () => { throw new Error('não deveria consultar contas — env tem prioridade'); } });
-    const c = await provedor.obter();
-    assert.ok(c && typeof c.decidir === 'function');
-  } finally {
-    if (chaveOriginal === undefined) delete process.env.IGRIS_DECISOES_CHAVE;
-    else process.env.IGRIS_DECISOES_CHAVE = chaveOriginal;
-    if (bancadaOriginal === undefined) delete process.env.IGRIS_DECISOES_BANCADA;
-    else process.env.IGRIS_DECISOES_BANCADA = bancadaOriginal;
-  }
+// M-1: a chave de bancada só vale com opt-in explícito do host (`modoBancada: true`). O host (Igris) lê
+// IGRIS_TEST=1 / NODE_ENV=test / IGRIS_DECISOES_BANCADA=1 e IGRIS_DECISOES_CHAVE da env e passa as opções;
+// o pacote não lê mais env. Prova completa em `provedor-gateway.test.js`.
+test('obter: chaveDeBancada sobrepõe listarContas quando modoBancada=true', async () => {
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, modoBancada: true, chaveDeBancada: 'sk-env-999', listarContas: async () => { throw new Error('não deveria consultar contas — a chave tem prioridade'); } });
+  const c = await provedor.obter();
+  assert.ok(c && typeof c.decidir === 'function');
 });
 
 test('_resetParaTeste: limpa cache e janela de retry desta instância', async () => {
   let chamadas = 0;
   const semConta = async () => { chamadas++; return []; };
-  const provedor = criarProvedorDeCliente({ listarContas: semConta, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas: semConta, criarProtocoloDoGateway: protocoloFake });
   await provedor.obter(); // marca falha
   provedor._resetParaTeste();
   const comConta = async () => { chamadas++; return [contaGateway]; };
@@ -159,7 +149,7 @@ test('_resetParaTeste: limpa cache e janela de retry desta instância', async ()
 // mais chama fetchImpl; só obtém o cliente e dispara aquecerDecisao (quando injetada).
 
 test('aquecer: nunca lança — sem aquecerDecisao injetada, devolve {transporte:false, decisao:false}', async () => {
-  const provedor = criarProvedorDeCliente({ listarContas: async () => [contaGateway], criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas: async () => [contaGateway], criarProtocoloDoGateway: protocoloFake });
   const r = await provedor.aquecer();
   assert.deepEqual(r, { transporte: false, decisao: false });
 });
@@ -172,7 +162,7 @@ test('aquecer: NUNCA chama fetchImpl (GET de transporte saiu); chama aquecerDeci
   let chamadasContas = 0;
   const listarContas = async () => { chamadasContas++; return []; }; // sem conta -> cliente null
 
-  const provedor = criarProvedorDeCliente({ listarContas, fetchImpl, aquecerDecisao, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas, fetchImpl, aquecerDecisao, criarProtocoloDoGateway: protocoloFake });
   const r = await provedor.aquecer();
   assert.equal(chamouTransporte, 0, 'aquecer() não faz mais GET de transporte');
   assert.equal(recebeuCliente, null, 'sem conta, aquecerDecisao recebe cliente null (mesmo contrato de aquecerDecisao(null) -> false — quem decide isso é a função injetada)');
@@ -193,7 +183,7 @@ test('aquecer: {transporte:false} explícito continua sem GET (compatibilidade d
   const aquecerDecisao = async (cliente) => { recebeuCliente = cliente; return true; };
   const listarContas = async () => [contaGateway];
 
-  const provedor = criarProvedorDeCliente({ listarContas, fetchImpl, aquecerDecisao, criarProtocoloDoGateway: protocoloFake });
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS, listarContas, fetchImpl, aquecerDecisao, criarProtocoloDoGateway: protocoloFake });
   const r = await provedor.aquecer({ transporte: false });
   assert.equal(chamouTransporte, 0);
   assert.equal(r.transporte, false);
@@ -202,7 +192,7 @@ test('aquecer: {transporte:false} explícito continua sem GET (compatibilidade d
 });
 
 test('aquecer: aquecerDecisao lançando não propaga — fica a critério da função injetada, mas se ela devolver false, aquecer() não lança', async () => {
-  const provedor = criarProvedorDeCliente({
+  const provedor = criarProvedorDeCliente({ consumer: CONSUMER_IGRIS,
     listarContas: async () => [contaGateway],
     fetchImpl: async () => ({ status: 200, ok: true, text: async () => '' }),
     aquecerDecisao: async () => false,

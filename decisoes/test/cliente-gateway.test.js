@@ -11,12 +11,18 @@ test('criarClienteDoGateway: protocolo com decide() é obrigatório', () => {
   assert.throws(() => criarClienteDoGateway({ protocolo: {} }), /protocolo/);
 });
 
+test('criarClienteDoGateway: consumer é obrigatório (sem padrão do Igris)', () => {
+  const protocolo = { decide: async () => ({ answers: {} }) };
+  assert.throws(() => criarClienteDoGateway({ protocolo }), /consumer/);
+  assert.throws(() => criarClienteDoGateway({ protocolo, consumer: '' }), /consumer/);
+});
+
 test('decidir: chama protocolo.decide() com state, questions, timeoutMs e routing (_consumer/_slot)', async () => {
   let recebido = null;
   const protocolo = {
     decide: async (args) => { recebido = args; return { answers: { a: true }, usage: { inputTokens: 1 } }; },
   };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   await c.decidir({ state: { pedido: 'oi' }, questions: { a: { type: 'noul', instructions: 'x' } } });
 
   assert.deepEqual(recebido.state, { pedido: 'oi' });
@@ -47,7 +53,7 @@ test('decidir: mapeia answers/usage/model/cost da resposta do protocolo', async 
       cost: { credits: 1, pricingVersion: 'v1', pricedByFallback: false },
     }),
   };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   const r = await c.decidir({ state: {}, questions: { a: { type: 'noul', instructions: 'x' } } });
 
   assert.deepEqual(r.answers, { cap_x: true });
@@ -65,7 +71,7 @@ test('decidir: usage normalizado com input_tokens/output_tokens/cost (formato qu
       cost: { credits: 2, pricingVersion: 'v1', pricedByFallback: false },
     }),
   };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   const r = await c.decidir({ state: {}, questions: { a: { type: 'noul', instructions: 'x' } } });
 
   assert.equal(r.usage.input_tokens, 10);
@@ -78,7 +84,7 @@ test('decidir: usage normalizado com input_tokens/output_tokens/cost (formato qu
 
 test('decidir: usage sem inputTokens/outputTokens/cost do gateway normaliza para 0, nunca undefined', async () => {
   const protocolo = { decide: async () => ({ answers: {} }) };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   const r = await c.decidir({ state: {}, questions: { a: { type: 'noul', instructions: 'x' } } });
 
   assert.equal(r.usage.input_tokens, 0);
@@ -88,14 +94,14 @@ test('decidir: usage sem inputTokens/outputTokens/cost do gateway normaliza para
 
 test('decidir: sem model na resposta, modelo cai no default "gateway:decision"', async () => {
   const protocolo = { decide: async () => ({ answers: { a: true } }) };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   const r = await c.decidir({ state: {}, questions: { a: { type: 'noul', instructions: 'x' } } });
   assert.equal(r.modelo, 'gateway:decision');
 });
 
 test('modelo: propriedade do cliente é o default antes de qualquer chamada', () => {
   const protocolo = { decide: async () => ({ answers: {} }) };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   assert.equal(c.modelo, 'gateway:decision');
 });
 
@@ -108,7 +114,7 @@ test('fim a fim: perguntar() com cliente do gateway devolve meta.tokens e meta.c
       cost: { credits: 5, pricingVersion: 'v1', pricedByFallback: false },
     }),
   };
-  const cliente = criarClienteDoGateway({ protocolo });
+  const cliente = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   const { answers, meta } = await perguntar({
     state: { pedido: 'oi' },
     questions: { cap_x: { type: 'noul', instructions: 'x' } },
@@ -123,7 +129,7 @@ test('fim a fim: perguntar() com cliente do gateway devolve meta.tokens e meta.c
 
 test('decidir: erro do protocolo propaga (perguntar() do núcleo é quem degrada)', async () => {
   const protocolo = { decide: async () => { throw new Error('gateway indisponível'); } };
-  const c = criarClienteDoGateway({ protocolo });
+  const c = criarClienteDoGateway({ protocolo, consumer: 'module:executor' });
   await assert.rejects(
     () => c.decidir({ state: {}, questions: { a: { type: 'noul', instructions: 'x' } } }),
     /gateway indisponível/,

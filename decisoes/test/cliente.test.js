@@ -52,3 +52,11 @@ test('sem chave lança antes de chamar', async () => {
   const c = criarCliente({ chave: '', fetchImpl: async () => { throw new Error('não deveria chamar'); } });
   await assert.rejects(() => c.decidir({ state: {}, questions: {} }), /chave/);
 });
+
+test('X-Title: padrão neutro "agent-factory"; o host passa o dele (Igris: "igris-decisions")', async () => {
+  const titulos = [];
+  const f = async (_u, o) => { titulos.push(o.headers['X-Title']); return { status: 200, ok: true, text: async () => JSON.stringify(respostaOk) }; };
+  await criarCliente({ chave: 'k', fetchImpl: f }).decidir({ state: {}, questions: {} });
+  await criarCliente({ chave: 'k', fetchImpl: f, xTitle: 'igris-decisions' }).decidir({ state: {}, questions: {} });
+  assert.deepEqual(titulos, ['agent-factory', 'igris-decisions']);
+});

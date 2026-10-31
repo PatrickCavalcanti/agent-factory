@@ -2,11 +2,13 @@
 // e pelo treino dentro do app (rota POST /api/decisoes/treinar). Assíncrona de propósito: cede o event loop
 // a cada sessão, porque na API roda na mesma thread dos turnos.
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync, statSync, renameSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { mapaDeFuncoes, casoDaInteracao, ehTurnoAutomatico, tsDaPasta, ehFuturo, ehCaminhoDeBancada } from './casos.js';
 
-export const RAIZ_POWERS_PADRAO = resolve(fileURLToPath(new URL('../../../powers/src/powers', import.meta.url)));
+// Sem raiz padrão: o chamador passa a raiz dos manifestos (no Igris: packages/powers/src/powers).
+function exigirRaiz(raizPowers, quem) {
+  if (typeof raizPowers !== 'string' || !raizPowers) throw new TypeError(`${quem}: raizPowers é obrigatório (raiz dos manifestos de capacidade)`);
+}
 const CHAVE_FUNCOES = 'functions'; // conferido no passo zero em google-calendar/power.json
 const lerJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const dirs = (p) => (existsSync(p) ? readdirSync(p).filter((n) => statSync(join(p, n)).isDirectory()) : []);
@@ -27,7 +29,8 @@ const PISO_NA_FABRICA = ['tela'];
  * O piso CONDICIONAL de um turno (`carrega` do agente, sessão de fundo) NÃO entra aqui: ele vive em `caso.piso`, por caso.
  * @returns {{ids:string[], fixas:string[]}}
  */
-export function pisoIncondicional({ raizPowers = RAIZ_POWERS_PADRAO } = {}) {
+export function pisoIncondicional({ raizPowers } = {}) {
+  exigirRaiz(raizPowers, 'pisoIncondicional');
   const ids = []; const fixas = [];
   if (!existsSync(raizPowers)) {
     // Sem a raiz dos powers o piso volta vazio: o treino não exclui NADA (funções sob demanda do piso e o próprio piso entram nos rótulos).
@@ -45,7 +48,8 @@ export function pisoIncondicional({ raizPowers = RAIZ_POWERS_PADRAO } = {}) {
 }
 
 /** @returns {Promise<{ok:true, casos:object[], descartadas:number, fora:number, futuros:number, arquivo:string}|{ok:false, motivo:string}>} */
-export async function extrairCasos({ dataDir, raizPowers = RAIZ_POWERS_PADRAO, agora = new Date() }) {
+export async function extrairCasos({ dataDir, raizPowers, agora = new Date() }) {
+  exigirRaiz(raizPowers, 'extrairCasos');
   const manifests = dirs(raizPowers).map((d) => lerJson(join(raizPowers, d, 'power.json'))).filter(Boolean);
   const mapa = mapaDeFuncoes(manifests, CHAVE_FUNCOES);
   const raiz = join(dataDir, 'logs', 'sessions');

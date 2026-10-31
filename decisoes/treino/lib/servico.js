@@ -50,6 +50,9 @@ const numero = (v, padrao, nome, { min = 0, max = Infinity, inteiro = false } = 
 /** Opções do portão por capacidade que deixaram de existir com o portão por anel: 400 em vez de ignorar em silêncio. */
 const OPCOES_REMOVIDAS = Object.freeze(['min', 'minRecentes']);
 
+/** Cache de embeddings: padrão neutro `<dataDir>/agent-factory/cache` (o Igris passa `(d) => join(d, 'igris', 'cache')`). */
+const dirCachePadrao = (dataDir) => join(dataDir, 'agent-factory', 'cache');
+
 /**
  * Valida o body opcional da rota. `portao` = `{margem, minAvaliacao}` da config (`IGRIS_CHAT_FABRICA_TREINO.portao`): são os
  * padrões; o body pode sobrepor `margem` ([-1, 1]), `minAvaliacao` e `dias` numa chamada. `min`/`minRecentes` (portão por capacidade)
@@ -89,13 +92,13 @@ function emUsoDoAnel(dirDecisoes, anel, slug) {
 }
 
 /**
- * @param {{ obterDataDir:()=>string, obterEmbedder:()=>object|null, invalidar?:(dataDir:string, anel:string)=>void,
+ * @param {{ raizPowers?:string, dirCache?:string|((dataDir:string)=>string), obterDataDir:()=>string, obterEmbedder:()=>object|null, invalidar?:(dataDir:string, anel:string)=>void,
  *           extrair?:Function, treinarCabecaFn?:Function, portao?:{margem:number, minAvaliacao:number, toleranciaVersao:number}, agora?:()=>Date }} deps
  *   `portao` = o `IGRIS_CHAT_FABRICA_TREINO.portao` já validado (a rota o lê de `configDoTreino()`); sem ele, o padrão.
  *   `agora` = o relógio do treino: o `quando` do histórico, o `agora` do extrator (o `ehFuturo` dele) e o carimbo do contador/cursor. Em modo bancada o
  *   `Date` global é simulado (`@igris/config/relogio`) e o treino tem de usar a hora REAL: a rota passa `agoraReal`. Padrão: `() => new Date()`.
  */
-export function criarServicoDeTreino({ obterDataDir, obterEmbedder, invalidar = () => {}, extrair = extrairCasos, treinarCabecaFn = treinarCabecaNoWorker, obterPiso, portao = PORTAO_PADRAO, agora = () => new Date() }) {
+export function criarServicoDeTreino({ obterDataDir, obterEmbedder, invalidar = () => {}, extrair = extrairCasos, treinarCabecaFn = treinarCabecaNoWorker, obterPiso, portao = PORTAO_PADRAO, agora = () => new Date(), raizPowers, dirCache = dirCachePadrao }) {
   // `obterPiso` é OBRIGATÓRIO: o piso vem do host (derivado de `capacidadeDoPower` + `toolEhFixa`), nunca de um padrão silencioso.
   if (typeof obterPiso !== 'function') throw new TypeError('criarServicoDeTreino: `obterPiso` é obrigatório (função que devolve {ids, fixas, powers?})');
   return {
@@ -132,13 +135,14 @@ export function criarServicoDeTreino({ obterDataDir, obterEmbedder, invalidar = 
         // Retrato no INÍCIO: o que for gravado durante o treino não é consumido por ele e continua contado.
         const consumidos = retratoDoContador(dirRegistro);
         const casosRegistro = await lerCasosAsync(dirRegistro, { validos: true }); // assíncrono: o app não congela lendo o registro cheio
-        let ex = await extrair({ dataDir, agora: agora() });
+        let ex = await extrair({ dataDir, raizPowers, agora: agora() });
         // Sem logs mas com registro: treina só com o registro.
         if (!ex.ok) { if (!casosRegistro.length) throw new ErroDeTreino(503, `FALTA: ${ex.motivo}`); ex = { ok: true, casos: [] }; }
         // Textos do catálogo (re-montagem do índice a partir do retrato): o MESMO arquivo de cache de embeddings do catálogo (o do Kairos, `cache-semantica.js` do orchestrator).
         // Pedidos dos casos: arquivo próprio — pedido de treino nunca entra no cache compartilhado de produção.
-        const embedder = comCacheEmDisco(embedderCru, join(dataDir, 'igris', 'cache', 'selecao-embeddings.json'), { roles: ['query'], mesclar: true });
-        const embedderPedidos = comCacheEmDisco(embedderCru, join(dataDir, 'igris', 'cache', 'treino-pedidos-embeddings.json'), { roles: ['query'] });
+        const dirDoCache = typeof dirCache === 'function' ? dirCache(dataDir) : dirCache;
+        const embedder = comCacheEmDisco(embedderCru, join(dirDoCache, 'selecao-embeddings.json'), { roles: ['query'], mesclar: true });
+        const embedderPedidos = comCacheEmDisco(embedderCru, join(dirDoCache, 'treino-pedidos-embeddings.json'), { roles: ['query'] });
         const aneis = {};
         for (const anel of opcoes.aneis) {
           const arqRet = join(dataDir, 'decisoes', 'indice', `${anel}.json`);

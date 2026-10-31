@@ -94,7 +94,7 @@ test('sucesso: grava cabeças carregáveis, invalida cada anel e devolve resumo 
   const dir = await dataDirComRetratos();
   try {
     const invalidados = [];
-    const servico = criarServicoDeTreino({ obterPiso: PISO_DE_TESTE, obterDataDir: () => dir, obterEmbedder: () => emb, invalidar: (d, a) => invalidados.push([d, a]), extrair: extrairFalso(dir) });
+    const servico = criarServicoDeTreino({ obterPiso: PISO_DE_TESTE, obterDataDir: () => dir, obterEmbedder: () => emb, invalidar: (d, a) => invalidados.push([d, a]), extrair: extrairFalso(dir), dirCache: (d) => join(d, 'igris', 'cache') });
     const r = await servico.treinar({ margem: -1 });
     assert.equal(r.ok, true);
     assert.equal(r.casos, 180);
@@ -352,7 +352,7 @@ test('extrairCasos: sem pasta de logs devolve ok=false (nada gravado)', async ()
   const { extrairCasos } = await import('../treino/lib/extrair.js');
   const dir = mkdtempSync(join(tmpdir(), 'extrair-'));
   try {
-    const r = await extrairCasos({ dataDir: dir });
+    const r = await extrairCasos({ dataDir: dir, raizPowers: join(dir, 'sem-powers') });
     assert.equal(r.ok, false);
     assert.equal(existsSync(join(dir, 'decisoes')), false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -553,4 +553,39 @@ test('M-a: piso vazio com registry CHEIO (nenhum power de piso configurado) não
 test('M-b: `obterPiso` é obrigatório — sem ele o serviço nem é criado', () => {
   assert.throws(() => criarServicoDeTreino({ obterDataDir: () => 'x', obterEmbedder: () => null }), /obterPiso/);
   assert.throws(() => criarServicoDeTreino({ obterDataDir: () => 'x', obterEmbedder: () => null, obterPiso: 'nao-funcao' }), /obterPiso/);
+});
+
+test('cache de embeddings: padrão neutro <dataDir>/agent-factory/cache; string fixa também vale', async () => {
+  const dir0 = await dataDirComRetratos();
+  try {
+    const servico = criarServicoDeTreino({ obterPiso: PISO_DE_TESTE, obterDataDir: () => dir0, obterEmbedder: () => emb, extrair: extrairFalso(dir0) });
+    assert.equal((await servico.treinar({ margem: -1 })).ok, true);
+    assert.equal(existsSync(join(dir0, 'agent-factory', 'cache', 'selecao-embeddings.json')), true);
+    assert.equal(existsSync(join(dir0, 'igris')), false, 'nada do Igris no padrão neutro');
+  } finally { rmSync(dir0, { recursive: true, force: true }); }
+  const dir = await dataDirComRetratos();
+  const fixo = mkdtempSync(join(tmpdir(), 'cache-fixo-'));
+  try {
+    const servico = criarServicoDeTreino({ obterPiso: PISO_DE_TESTE, obterDataDir: () => dir, obterEmbedder: () => emb, extrair: extrairFalso(dir), dirCache: fixo });
+    assert.equal((await servico.treinar({ margem: -1 })).ok, true);
+    assert.equal(existsSync(join(fixo, 'treino-pedidos-embeddings.json')), true);
+  } finally { rmSync(dir, { recursive: true, force: true }); rmSync(fixo, { recursive: true, force: true }); }
+});
+
+test('serviço repassa raizPowers ao extrator', async () => {
+  const dir = await dataDirComRetratos();
+  try {
+    let recebido;
+    const base = extrairFalso(dir);
+    const servico = criarServicoDeTreino({ obterPiso: PISO_DE_TESTE, obterDataDir: () => dir, obterEmbedder: () => emb, extrair: async (a) => { recebido = a.raizPowers; return base(a); }, raizPowers: '/raiz/x' });
+    await servico.treinar({ margem: -1 });
+    assert.equal(recebido, '/raiz/x');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('extrairCasos / pisoIncondicional: raizPowers é obrigatório (sem padrão fora do pacote)', async () => {
+  const { extrairCasos, pisoIncondicional } = await import('../treino/lib/extrair.js');
+  await assert.rejects(extrairCasos({ dataDir: '/x' }), /raizPowers/);
+  assert.throws(() => pisoIncondicional(), /raizPowers/);
+  assert.throws(() => pisoIncondicional({}), /raizPowers/);
 });

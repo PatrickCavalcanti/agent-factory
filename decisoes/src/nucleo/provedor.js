@@ -37,11 +37,12 @@ const INTERVALO_RETRY_MS = 60_000;
 let avisouSemGatewayNesteProcesso = false;
 
 /**
- * @param {{ listarContas: () => Promise<Array<{protocol?:string, api_key?:string}>>, agora?: () => number, fetchImpl?: Function, timeoutMs?: number, aquecerDecisao?: (cliente: {decidir:Function}) => Promise<boolean>, criarProtocoloDoGateway?: (conta: object) => {decide: Function} }} p
+ * @param {{ listarContas: () => Promise<Array<{protocol?:string, api_key?:string}>>, agora?: () => number, fetchImpl?: Function, timeoutMs?: number, aquecerDecisao?: (cliente: {decidir:Function}) => Promise<boolean>, criarProtocoloDoGateway?: (conta: object) => {decide: Function}, consumer: string, xTitle?: string, modoBancada?: boolean, chaveDeBancada?: string }} p
  * @returns {{ obter: (o?: {marcarFalha?: boolean, agora?: Function, listarContas?: Function}) => Promise<{decidir:Function, modelo?:string}|null>, aquecer: (o?: {transporte?: boolean}) => Promise<{transporte: boolean, decisao: boolean}>, _resetParaTeste: () => void }}
  */
-export function criarProvedorDeCliente({ listarContas: listarContasPadrao, agora: agoraPadrao = Date.now, fetchImpl, timeoutMs, aquecerDecisao, criarProtocoloDoGateway } = {}) {
+export function criarProvedorDeCliente({ listarContas: listarContasPadrao, agora: agoraPadrao = Date.now, fetchImpl, timeoutMs, aquecerDecisao, criarProtocoloDoGateway, consumer, xTitle, modoBancada = false, chaveDeBancada } = {}) {
   if (typeof listarContasPadrao !== 'function') throw new Error('criarProvedorDeCliente: listarContas é obrigatório');
+  if (typeof consumer !== 'string' || !consumer) throw new Error('criarProvedorDeCliente: consumer é obrigatório (identifica o consumidor no gateway)');
 
   // Cache só de sucesso (adendo §14, Task 2, item 4): se a leitura da conta falhar (ex.:
   // banco ainda subindo no boot), a feature não fica morta pelo resto do processo — só marca
@@ -54,7 +55,7 @@ export function criarProvedorDeCliente({ listarContas: listarContasPadrao, agora
     const t = agora();
     if (ultimaFalhaEm && t - ultimaFalhaEm < INTERVALO_RETRY_MS) return null;
 
-    // IGRIS_DECISOES_CHAVE: override só de bancada/teste — cliente direto na OpenRouter, fora
+    // chaveDeBancada (no Igris: IGRIS_DECISOES_CHAVE, lida pelo host): override só de bancada/teste — cliente direto na OpenRouter, fora
     // do caminho de produção.
     // M-1 (segunda revisão final): a versão anterior liberava a chave quando
     // `NODE_ENV !== 'production'` — mas o Igris (Electron) NUNCA seta `NODE_ENV=production`
@@ -63,14 +64,12 @@ export function criarProvedorDeCliente({ listarContas: listarContasPadrao, agora
     // `IGRIS_TEST=1` (suíte com banco), `NODE_ENV=test`, ou `IGRIS_DECISOES_BANCADA=1` (bancada
     // manual/eval fora dessas duas). Sem nenhuma das três, a env é ignorada — nunca uma
     // "garantia em produção", só bancada/teste, opt-in.
-    const bancadaOuTeste = process.env.IGRIS_TEST === '1'
-      || process.env.NODE_ENV === 'test'
-      || process.env.IGRIS_DECISOES_BANCADA === '1';
-    const chaveEnv = bancadaOuTeste ? process.env.IGRIS_DECISOES_CHAVE : undefined;
+    // Opt-in EXPLÍCITO do host: `modoBancada` (o host decide o que é bancada/teste) + `chaveDeBancada`. Sem os dois, a chave é ignorada.
+    const chaveEnv = modoBancada === true ? chaveDeBancada : undefined;
     if (chaveEnv) {
       // E8: runtime sem retry — no caminho quente, retry em 429/529 somaria segundos antes de
       // build-tool-registry; "nice to have" não vale esperar (mesma decisão de sempre).
-      cliente = criarCliente({ chave: chaveEnv, tentativas: 1, timeoutMs, fetchImpl });
+      cliente = criarCliente({ chave: chaveEnv, xTitle, tentativas: 1, timeoutMs, fetchImpl });
       return cliente;
     }
 
@@ -103,7 +102,7 @@ export function criarProvedorDeCliente({ listarContas: listarContasPadrao, agora
     }
     if (!protocolo) { if (marcarFalha) ultimaFalhaEm = t; return null; }
 
-    cliente = criarClienteDoGateway({ protocolo, timeoutMs });
+    cliente = criarClienteDoGateway({ protocolo, consumer, timeoutMs });
     return cliente;
   }
 

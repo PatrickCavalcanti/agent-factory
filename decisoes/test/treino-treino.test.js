@@ -179,6 +179,11 @@ test('embedderDoRoteamento com resolver injetado adapta o provider; sem provider
   await assert.rejects(embedderDoRoteamento({ resolver: async () => null }), /ausente/);
 });
 
+test('embedderDoRoteamento: sem resolver injetado lança (sem import de pacote do host)', async () => {
+  await assert.rejects(embedderDoRoteamento(), /resolver/);
+  await assert.rejects(embedderDoRoteamento({}), /resolver/);
+});
+
 test('cache em disco: segundo embed não chama o provider; salvar persiste', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'treino-cache-'));
   try {

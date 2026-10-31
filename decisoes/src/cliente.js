@@ -2,12 +2,13 @@
 // Cliente do endpoint de decisões da OpenRouter (rota alpha). Corpo: { model, state, questions }.
 // Sem SDK: fetch nativo, timeout por AbortController, retry só em 429/529.
 const URL_PADRAO = 'https://openrouter.ai/api/alpha/decisions';
+const TITULO_PADRAO = 'agent-factory'; // header X-Title; o host passa o seu (o Igris passa 'igris-decisions')
 const MODELO_PADRAO = 'typesafe/jev-1.13'; // alias ~typesafe/jev-latest ainda sem endpoint (2026-09-17)
 
 /**
- * @param {{ chave: string, fetchImpl?: typeof fetch, url?: string, modelo?: string, timeoutMs?: number, esperaMs?: number, tentativas?: number }} opts
+ * @param {{ chave: string, xTitle?: string, fetchImpl?: typeof fetch, url?: string, modelo?: string, timeoutMs?: number, esperaMs?: number, tentativas?: number }} opts
  */
-export function criarCliente({ chave, fetchImpl = fetch, url = URL_PADRAO, modelo = MODELO_PADRAO, timeoutMs = 1500, esperaMs = 400, tentativas = 3 }) {
+export function criarCliente({ chave, xTitle = TITULO_PADRAO, fetchImpl = fetch, url = URL_PADRAO, modelo = MODELO_PADRAO, timeoutMs = 1500, esperaMs = 400, tentativas = 3 }) {
   async function decidir({ state, questions }) {
     if (!chave) throw new Error('decisions: chave da OpenRouter ausente');
     const body = JSON.stringify({ model: modelo, state, questions });
@@ -18,7 +19,7 @@ export function criarCliente({ chave, fetchImpl = fetch, url = URL_PADRAO, model
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       let r, txt;
       try {
-        r = await fetchImpl(url, { method: 'POST', signal: ctrl.signal, headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'X-Title': 'igris-decisions' }, body });
+        r = await fetchImpl(url, { method: 'POST', signal: ctrl.signal, headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'X-Title': xTitle }, body });
         txt = await r.text();
       } catch (err) {
         clearTimeout(timer);

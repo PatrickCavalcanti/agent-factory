@@ -28,12 +28,16 @@
 const MODELO_PADRAO = 'gateway:decision'; // antes da 1ª resposta real; depois, o `model` do gateway resolveu no perfil
 
 /**
- * @param {{ protocolo: { decide: Function }, consumer?: string, slot?: string, timeoutMs?: number }} opts
+ * @param {{ protocolo: { decide: Function }, consumer: string, slot?: string, timeoutMs?: number }} opts
  * @returns {{ decidir: (p: {state: object, questions: object}) => Promise<{answers: object, usage: {inputTokens?: number, outputTokens?: number, input_tokens: number, output_tokens: number, cost: number}, modelo: string, id?: string, ms: number, cost?: {credits?: number}}>, modelo: string }}
  */
-export function criarClienteDoGateway({ protocolo, consumer = 'module:executor', slot = 'decision', timeoutMs = 1500 }) {
+export function criarClienteDoGateway({ protocolo, consumer, slot = 'decision', timeoutMs = 1500 }) {
   if (!protocolo || typeof protocolo.decide !== 'function') {
     throw new Error('criarClienteDoGateway: protocolo com decide() é obrigatório');
+  }
+  // `consumer` identifica quem consome o gateway (cota/telemetria do host): sem padrão neutro que faça sentido, é do host.
+  if (typeof consumer !== 'string' || !consumer) {
+    throw new Error("criarClienteDoGateway: consumer é obrigatório (ex.: 'module:executor' no Igris)");
   }
 
   async function decidir({ state, questions }) {

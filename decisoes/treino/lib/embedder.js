@@ -1,21 +1,18 @@
 // Embedder do provider de roteamento para os comandos de treino — MESMO contrato e mesma lógica de
 // `adaptarEmbedder` (packages/semantic-context/src/embedder.js:18-34), sem depender daquele pacote.
 // Mesmos vetores da decisão (spec D5).
-// O provider mora em @igris/embeddings (`getProviderForRole`), que só resolve com o estado de embeddings
-// inicializado pelo app (python runtime, userData). Fora do app a resolução falha — e o chamador termina
-// com `FALTA:`. O import é dinâmico: @igris/decisions não declara essa dependência.
+// No Igris o provider vem de @igris/embeddings (`getProviderForRole`), que só resolve com o estado de embeddings
+// inicializado pelo app. Aqui o resolvedor é injetado pelo host; falha de resolução = o chamador termina com `FALTA:`.
 // Cache em disco opcional: { versao:1, itens:{ "<slug>#<role>#<sha16>": number[] } }.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export async function embedderDoRoteamento({ resolver = null } = {}) {
-  let resolve = resolver;
-  if (!resolve) {
-    let mod;
-    try { mod = await import('@igris/embeddings'); } catch (e) { throw new Error(`@igris/embeddings indisponivel (${e?.message ?? e})`); }
-    resolve = mod.getProviderForRole;
-  }
+  // O resolvedor (`(role) => provider`) é do host: o pacote não importa nenhum módulo de embeddings (no Igris:
+  // `getProviderForRole` de @igris/embeddings).
+  if (typeof resolver !== 'function') throw new Error('embedderDoRoteamento: resolver é obrigatório (função (role) => provider)');
+  const resolve = resolver;
   const provider = await resolve('routing');
   if (!provider) throw new Error('provider de roteamento ausente');
   return {
