@@ -195,6 +195,11 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   runtime do genos (`createOrchestrator({ runtimeObserver })`): recebe os eventos NORMALIZADOS
  *   `agent.*` (`kind`, `seq`, `turnIndex`, `payload`), diferentes dos crus de `aoEvento`. Repassado
  *   sem tocar — serve às projeções de observabilidade do host (agentic-loop, run-timeline).
+ * @property {{ estimateCostUsd: (i: { provider: string, model: string, usage?: object }) => number|null }} [pricingResolver]
+ *   Repassado cru para `createOrchestrator({ pricingResolver })`: é o genos quem resolve `costUsd`
+ *   de cada `provider.completed` (`response.costUsd ?? pricingResolver.estimateCostUsd(...)`). Sem
+ *   este campo o custo nunca é calculado (o adapter devolve `costUsd: null`). A fábrica não sabe o
+ *   que é preço — quem passa é o host. (Do Ariadne 26be46a9.)
  * @property {{ zFull?: number, zCandidate?: number, rawFloor?: number,
  *              tool?: { hydrate?: number, topKPerProvider?: number },
  *              skill?: { centralizar?: boolean, candidate?: number } }} [limiares] Cortes do
@@ -3935,6 +3940,8 @@ export function criarOrquestrador(config) {
       // que alimenta as projeções de observabilidade (homura: agentic-loop,
       // run-timeline) sem a fábrica conhecer nenhuma delas.
       ...(config.runtimeObserver ? { runtimeObserver: config.runtimeObserver } : {}),
+      // Ver o JSDoc de `ConfigDoOrquestrador.pricingResolver` — repasse cru.
+      ...(config.pricingResolver ? { pricingResolver: config.pricingResolver } : {}),
       // `responseSchema` viaja no metadata até o provider adapter (o genos
       // clona config.metadata para request.metadata). É como o schema do
       // envelope chega ao structured output sem a fábrica conhecer o adapter.
