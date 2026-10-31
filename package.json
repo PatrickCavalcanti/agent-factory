@@ -35,10 +35,17 @@
     "./decisoes/dominio": "./decisoes/treino/lib/dominio.js",
     "./decisoes/item-do-registro": "./decisoes/treino/lib/item-do-registro.js",
     "./decisoes/refinadores": "./decisoes/src/refinadores/index.js",
-    "./decisoes/transporte": "./decisoes/src/transporte.js"
+    "./decisoes/transporte": "./decisoes/src/transporte.js",
+    "./apoio/continuidade": "./apoio/src/continuidade.js",
+    "./apoio/intencao": "./apoio/src/intencao.js",
+    "./apoio/consultas-anteriores": "./apoio/src/consultas-anteriores.js",
+    "./apoio/chaveDasCapacidades": "./apoio/src/chaveDasCapacidades.js",
+    "./apoio/conversa": "./apoio/src/conversa.js",
+    "./apoio/valores-do-registro": "./apoio/src/valores-do-registro.js",
+    "./apoio/pista-contexto": "./apoio/src/pista-contexto.js"
   },
   "scripts": {
-    "test": "node --test orquestrador/test/*.test.js decisoes/test/*.test.js $(ls test/*.test.js 2>/dev/null)"
+    "test": "node --test orquestrador/test/*.test.js decisoes/test/*.test.js apoio/test/*.test.js $(ls test/*.test.js 2>/dev/null)"
   },
   "peerDependencies": {
     "@okds/kairos": "^0.841.261021",
