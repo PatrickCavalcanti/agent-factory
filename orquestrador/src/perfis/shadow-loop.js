@@ -43,6 +43,8 @@ function sanitizarId(id) {
  * @param {(nome: string, definicao: object) => object} [entrada.decorarTool]
  * @param {(texto: string) => void} [entrada.aoTexto]
  * @param {(evento: object) => void} [entrada.aoEvento]
+ * @param {string} [entrada.prefixoDoEnvelope] prefixo do nome do schema do envelope
+ *   (`<prefixo>_envelope_headless`); sem ele, nome neutro. Sem tools (protocolo nativo) é ignorado.
  * @returns {import('../index.js').ConfigDoOrquestrador}
  */
 export function perfilShadowLoop(entrada) {
@@ -93,7 +95,12 @@ export function perfilShadowLoop(entrada) {
       prefixarTools: false,
     }],
     protocolo: semTools ? 'nativo' : 'envelope',
-    ...(semTools ? {} : { protocoloOpts: { headless: true } }),
+    ...(semTools ? {} : {
+      protocoloOpts: {
+        headless: true,
+        ...(entrada.prefixoDoEnvelope ? { prefixoDoEnvelope: entrada.prefixoDoEnvelope } : {}),
+      },
+    }),
     provider: entrada.provider,
     decorarTool: entrada.decorarTool,
     maxIteracoes: manifest.maxTurns ?? 12,

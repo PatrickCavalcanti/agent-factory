@@ -105,3 +105,18 @@ test('o perfil roda de ponta a ponta na fábrica, sem decorarTool', async () => 
   assert.ok(saida.payload.system.includes('Grava.'), 'o manual da função não entrou no prompt');
   assert.ok(!saida.payload.system.includes('md-notes-writer__gravar'), 'o prompt não deveria anunciar o nome prefixado');
 });
+
+test('prefixoDoEnvelope vai para protocoloOpts e dá nome ao schema do turno; sem ele, nome neutro', async () => {
+  const { estrategiaEnvelope } = await import('../src/protocolo/envelope.js');
+  const com = perfilShadowLoop({ manifest, systemPrompt: 'x', tools, provider, prefixoDoEnvelope: 'igris' });
+  assert.deepEqual(com.protocoloOpts, { headless: true, prefixoDoEnvelope: 'igris' });
+  assert.equal(estrategiaEnvelope(com.protocoloOpts).schema().name, 'igris_envelope_headless');
+  const sem = perfilShadowLoop({ manifest, systemPrompt: 'x', tools, provider });
+  assert.deepEqual(sem.protocoloOpts, { headless: true });
+  assert.equal(estrategiaEnvelope(sem.protocoloOpts).schema().name, 'envelope_headless');
+});
+
+test('prefixoDoEnvelope é ignorado sem tools (protocolo nativo, sem schema)', () => {
+  const c = perfilShadowLoop({ manifest, systemPrompt: 'x', tools: [], provider, prefixoDoEnvelope: 'igris' });
+  assert.equal(c.protocoloOpts, undefined);
+});

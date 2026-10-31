@@ -222,21 +222,22 @@ invalida o cache dele. **São cinco pontos**, não um:
 | `packages/powers/src/powers/async-shadows/agents/motor-llm.js` L534 | `criarOrquestrador(perfilAgenteLlm({…}))` | ver abaixo |
 | `packages/shadows/src/runner/in-process.js` L418 | `criarOrquestrador(perfilShadowLoop({…}))` | ver abaixo |
 
-Os perfis `perfilAgenteLlm` (`orquestrador/src/perfis/agente-llm.js` L62) e `perfilShadowLoop`
-(`shadow-loop.js` L96) fixam `protocoloOpts: { headless: true }` e **não** aceitam o prefixo: sem
-ajuste, as sombras e os agentes LLM passam a mandar `envelope_headless` onde hoje mandam
-`igris_envelope_headless`. Nos dois chamadores, sobrepor depois do perfil:
+Os perfis `perfilAgenteLlm` (`orquestrador/src/perfis/agente-llm.js`) e `perfilShadowLoop`
+(`shadow-loop.js`) fixam `headless: true` e aceitam a opção **`prefixoDoEnvelope`** na própria
+`entrada` (ao lado de `provider`, `decorarTool`, `aoTexto`, `aoEvento`), que vai para
+`protocoloOpts.prefixoDoEnvelope`. Sem a opção, o nome é neutro (`envelope_headless`); sem tools,
+`perfilShadowLoop` usa protocolo `nativo` (sem schema) e ignora a opção. Nos dois chamadores,
+acrescentar `prefixoDoEnvelope: 'igris'` à entrada do perfil:
 
 ```js
-const perfil = perfilShadowLoop({ /* …como hoje… */ });
-const orq = criarOrquestrador(perfil.protocoloOpts
-  ? { ...perfil, protocoloOpts: { ...perfil.protocoloOpts, prefixoDoEnvelope: 'igris' } }
-  : perfil);   // semTools usa protocolo 'nativo', sem schema: nada a passar
+// packages/shadows/src/runner/in-process.js L418
+criarOrquestrador(perfilShadowLoop({ /* …como hoje… */, prefixoDoEnvelope: 'igris' }));
+// packages/powers/src/powers/async-shadows/agents/motor-llm.js L534
+(deps.perfilAgenteLlm || perfilAgenteLlm)({ /* …como hoje… */, prefixoDoEnvelope: 'igris' });
 ```
 
-(`motor-llm.js` tem `deps.criarOrquestrador`/`deps.perfilAgenteLlm` injetáveis — o teste
-`motor-llm.test.js` espia o perfil; embrulhar na chamada, não dentro do perfil.) Alternativa a avaliar
-na biblioteca: os perfis aceitarem `prefixoDoEnvelope` na entrada (pendência registrada).
+(`motor-llm.test.js` espia o perfil por `deps.perfilAgenteLlm`: o teste pode afirmar a opção na
+entrada.) Esses são os dois únicos chamadores dos perfis fora de testes (grep no Igris).
 `bancada/cenarios/chat-igris.mjs` L28 repete `protocoloOpts: { headless: false }`: mesmo ajuste (só
 fidelidade da bancada).
 

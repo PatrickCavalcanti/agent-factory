@@ -152,3 +152,12 @@ test('ponta a ponta na fábrica, sem decorarTool: notificar_do_agente executa pe
   assert.ok(saida.payload.system.includes('notificar_do_agente'), 'o índice não anunciou o nome cru "notificar_do_agente"');
   assert.ok(!saida.payload.system.includes('agente__notificar_do_agente'), 'o prompt não deveria anunciar o nome prefixado');
 });
+
+test('prefixoDoEnvelope vai para protocoloOpts e dá nome ao schema do turno; sem ele, nome neutro', () => {
+  const com = perfilAgenteLlm({ agent, tools, provider, prefixoDoEnvelope: 'igris' });
+  assert.deepEqual(com.protocoloOpts, { headless: true, prefixoDoEnvelope: 'igris' });
+  assert.equal(estrategiaEnvelope(com.protocoloOpts).schema().name, 'igris_envelope_headless');
+  const sem = perfilAgenteLlm({ agent, tools, provider });
+  assert.deepEqual(sem.protocoloOpts, { headless: true });
+  assert.equal(estrategiaEnvelope(sem.protocoloOpts).schema().name, 'envelope_headless');
+});

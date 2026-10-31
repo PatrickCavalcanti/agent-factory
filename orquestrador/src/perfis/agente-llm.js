@@ -26,6 +26,8 @@ import { FORMA_HEADLESS } from './shadow-loop.js';
  * @param {(nome: string, definicao: object) => object} [entrada.decorarTool]
  * @param {(texto: string) => void} [entrada.aoTexto]
  * @param {(evento: object) => void} [entrada.aoEvento]
+ * @param {string} [entrada.prefixoDoEnvelope] prefixo do nome do schema do envelope
+ *   (`<prefixo>_envelope_headless`); sem ele, nome neutro (`envelope_headless`).
  */
 export function perfilAgenteLlm(entrada) {
   const { agent, tools } = entrada;
@@ -59,7 +61,10 @@ export function perfilAgenteLlm(entrada) {
       prefixarTools: false,
     }],
     protocolo: 'envelope',
-    protocoloOpts: { headless: true },
+    protocoloOpts: {
+      headless: true,
+      ...(entrada.prefixoDoEnvelope ? { prefixoDoEnvelope: entrada.prefixoDoEnvelope } : {}),
+    },
     provider: entrada.provider,
     decorarTool: entrada.decorarTool,
     maxIteracoes: entrada.maxTurns ?? 12,
