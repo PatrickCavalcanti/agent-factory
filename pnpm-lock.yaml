@@ -1,0 +1,55 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@okds/kairos':
+        specifier: git+https://github.com./PatrickCavalcanti/kairos.git#semver:^0.841.261021
+        version: git+https://github.com./PatrickCavalcanti/kairos.git#8843c772fbfa84a842f5622d691c411c09f1b373
+      genos-orchestrator:
+        specifier: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#semver:^0.3.12
+        version: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613
+
+packages:
+
+  '@okds/kairos@git+https://github.com./PatrickCavalcanti/kairos.git#8843c772fbfa84a842f5622d691c411c09f1b373':
+    resolution: {commit: 8843c772fbfa84a842f5622d691c411c09f1b373, repo: https://github.com./PatrickCavalcanti/kairos.git, type: git}
+    version: 0.841.261021
+    engines: {node: '>=20'}
+
+  '@opentelemetry/api@1.10.0':
+    resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
+    engines: {node: '>=8.0.0'}
+
+  genos-orchestrator@git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613:
+    resolution: {commit: c0f935a3f630dc1c25716d05e136964dc07f4613, repo: https://github.com./PatrickCavalcanti/genos-orchestrator.git, type: git}
+    version: 0.3.12
+    engines: {node: '>=22.0.0', pnpm: '>=10.0.0'}
+
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+snapshots:
+
+  '@okds/kairos@git+https://github.com./PatrickCavalcanti/kairos.git#8843c772fbfa84a842f5622d691c411c09f1b373':
+    dependencies:
+      genos-orchestrator: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613
+      zod: 3.25.76
+
+  '@opentelemetry/api@1.10.0': {}
+
+  genos-orchestrator@git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613:
+    dependencies:
+      '@opentelemetry/api': 1.10.0
+      zod: 3.25.76
+
+  zod@3.25.76: {}

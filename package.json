@@ -1,0 +1,63 @@
+{
+  "name": "@okds/agent-factory",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./orquestrador/src/index.js",
+    "./prompt-builder": "./orquestrador/src/prompt-builder.js",
+    "./capacidades": "./orquestrador/src/capacidades.js",
+    "./calibracao": "./orquestrador/src/calibracao.js",
+    "./cache-exemplos": "./orquestrador/src/cache-exemplos.js",
+    "./protocolo": "./orquestrador/src/protocolo/index.js",
+    "./protocolo/envelope-schema": "./orquestrador/src/protocolo/envelope-schema.js",
+    "./perfis/shadow-loop": "./orquestrador/src/perfis/shadow-loop.js",
+    "./perfis/agente-llm": "./orquestrador/src/perfis/agente-llm.js",
+    "./loop-do-turno": "./orquestrador/src/loop-do-turno.js",
+    "./decisoes": "./decisoes/src/index.js",
+    "./decisoes/cliente": "./decisoes/src/cliente.js",
+    "./decisoes/catalogo": "./decisoes/src/catalogo.js",
+    "./decisoes/estado": "./decisoes/src/estado.js",
+    "./decisoes/gates": "./decisoes/src/gates.js",
+    "./decisoes/local": "./decisoes/src/local/index.js",
+    "./decisoes/loop": "./decisoes/src/loop/index.js",
+    "./decisoes/loop/valores-rotulados": "./decisoes/src/loop/valores-rotulados.js",
+    "./decisoes/nucleo": "./decisoes/src/nucleo/index.js",
+    "./decisoes/perguntas": "./decisoes/src/perguntas.js",
+    "./decisoes/treino": "./decisoes/treino/lib/servico.js",
+    "./decisoes/caso": "./decisoes/treino/lib/caso.js",
+    "./decisoes/registro": "./decisoes/treino/lib/registro.js",
+    "./decisoes/versoes": "./decisoes/treino/lib/versoes.js",
+    "./decisoes/lote": "./decisoes/treino/lib/lote.js",
+    "./decisoes/trava": "./decisoes/treino/lib/trava.js",
+    "./decisoes/worker-treino": "./decisoes/treino/lib/worker-treino.js",
+    "./decisoes/extrair": "./decisoes/treino/lib/extrair.js",
+    "./decisoes/casos": "./decisoes/treino/lib/casos.js",
+    "./decisoes/dominio": "./decisoes/treino/lib/dominio.js",
+    "./decisoes/item-do-registro": "./decisoes/treino/lib/item-do-registro.js",
+    "./decisoes/refinadores": "./decisoes/src/refinadores/index.js",
+    "./decisoes/transporte": "./decisoes/src/transporte.js"
+  },
+  "scripts": {
+    "test": "node --test orquestrador/test/*.test.js decisoes/test/*.test.js $(ls test/*.test.js 2>/dev/null)"
+  },
+  "peerDependencies": {
+    "@okds/kairos": "^0.841.261021",
+    "genos-orchestrator": "^0.3.12"
+  },
+  "devDependencies": {
+    "@okds/kairos": "git+https://github.com./PatrickCavalcanti/kairos.git#semver:^0.841.261021",
+    "genos-orchestrator": "git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#semver:^0.3.12"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@okds/kairos",
+      "genos-orchestrator"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
