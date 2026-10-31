@@ -35,7 +35,7 @@ catálogo do pnpm, a linha acima vai no catálogo e o `package.json` declara `"c
 
 ### Peers: kairos e genos, UMA cópia de cada
 
-`@okds/kairos` (`^0.841.261021`) e `genos-orchestrator` (`^0.3.12`) são **peerDependencies** —
+`@okds/kairos` (`>=0.840.261021 <0.842.0`) e `genos-orchestrator` (`^0.3.12`) são **peerDependencies** —
 semver, não URL git, porque o pnpm recusa URL git em peer. O consumidor declara os dois (com a URL
 git, como faz para qualquer dependência privada) **na raiz do workspace e em cada pacote que importa
 este** e `zod` vem junto como dependência normal.

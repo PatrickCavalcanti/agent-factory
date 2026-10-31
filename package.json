@@ -60,7 +60,7 @@
     "test": "node --test orquestrador/test/*.test.js decisoes/test/*.test.js apoio/test/*.test.js $(ls test/*.test.js 2>/dev/null)"
   },
   "peerDependencies": {
-    "@okds/kairos": "^0.841.261021",
+    "@okds/kairos": ">=0.840.261021 <0.842.0",
     "genos-orchestrator": "^0.3.12"
   },
   "devDependencies": {

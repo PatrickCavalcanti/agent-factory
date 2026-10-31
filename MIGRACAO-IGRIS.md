@@ -46,17 +46,20 @@ Legenda de caminhos: `packages/…` é do Igris; `orquestrador/`, `decisoes/`, `
 catalog:
   # …entradas existentes…
   "@okds/agent-factory": "git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^0.1.0"
-  "@okds/kairos": "git+https://github.com./PatrickCavalcanti/kairos.git#semver:^0.841.261021"   # era ^0.840.261021
 ```
 
+O kairos do catálogo **não muda**: o peer desta biblioteca aceita `>=0.840.261021 <0.842.0`.
+
 - O ponto em `github.com.` é obrigatório (`scripts/check-git-deps.mjs`, no `preinstall`, recusa sem ele).
-- **Subir o kairos de `^0.840` para `^0.841.261021`**: é o piso do peer desta biblioteca
-  (`exposedName` público em `@okds/kairos/core/names`). É uma mudança do Igris por si só — rodar a
-  suíte só com o bump antes de trocar qualquer import, para separar o que é do kairos do que é da
-  ligação **(conferir** o que a 0.841 muda para o Igris)**.
+- **Kairos 0.840 × 0.841 — decisão separada, fora da ligação.** A biblioteca roda igual nas duas
+  (suíte verde com o bridge da 0.840, conferido na revisão). `exposedName` já é público em
+  `@okds/kairos/core/names` desde a 0.830. O que a 0.841 muda é o `call_capability` do bridge: argumentos
+  soltos ao lado de `ref` (`call_capability({ ref, texto })`) **passam a chegar à tool** — na 0.840 eram
+  descartados. É mudança de comportamento em produção que a suíte não pega; se o Igris quiser o bump,
+  fazer num commit próprio, antes ou depois da ligação, nunca junto.
 - **Manter o override** `"@okds/kairos>genos-orchestrator"` (commit fixado = o que o lockfile resolve
   para `genos-orchestrator` 0.3.12). Esta biblioteca exige `genos-orchestrator ^0.3.12` e UMA cópia dele.
-  Se o kairos 0.841 pedir faixa diferente do genos, refixar o commit do override junto.
+  Se um dia o kairos subir e pedir faixa diferente do genos, refixar o commit do override junto.
 
 ### `package.json` por pacote
 
@@ -87,7 +90,8 @@ Install (Windows, no Igris): `pnpm install` normal; a variável `GIT_CONFIG_*` d
 ## 2. Ordem das trocas (resumo)
 
 Ver seção 10. Em uma frase: catálogo → install → trocar especificadores (mecânico, sem mudar valor
-nenhum) → passar os parâmetros da seção 4 → ajustar os testes que ficam → só então apagar as cópias.
+nenhum — **exceto `executor/src/orchestration/decisoes.js`, cuja troca vai junto com o bloco do §4.2**:
+`criarProvedorDeCliente` sem `consumer` lança já no import e deixaria todo teste do executor vermelho) → passar os parâmetros da seção 4 → ajustar os testes que ficam → só então apagar as cópias.
 
 ## 3. Tabela de troca de especificadores
 
@@ -265,12 +269,12 @@ valor antigo).** Em cada um dos cinco pontos, uma asserção de nome, não de ig
 | `perfil.js` L346 | `executor/test/fabrica-perfil.test.js` (L41 já afirma `config.protocoloOpts.headless === false`) | `assert.equal(config.protocoloOpts.prefixoDoEnvelope, 'igris')` |
 | `turno.js` L1482 | testes 24 e 25 de `fabrica-continuidade-turno.test.js` | `assert.equal(schemas[0].name, 'igris_envelope_contribuicoes')` (24) e `'igris_envelope'` (25), além do ajuste acima |
 | `executor.js` L363 | **novo** teste em `executor/test/` que capture o `responseSchema` entregue ao provider no caminho do `executor.js` (molde: `turnoCapturandoSchema` do teste 24, ou o provider espião de `streaming-envelope-deltas.test.js`) | `assert.equal(schema.name, 'igris_envelope')` (e `'igris_envelope_headless'` com `ctx.headless === true`) |
-| `motor-llm.js` L534 | `powers/test/async-shadows/motor-llm.test.js`, spy `perfilSpy` já existente (~L663: `maxTurns`) | no spy, `prefixoRecebido = entrada.prefixoDoEnvelope` e `assert.equal(prefixoRecebido, 'igris')`; opcional: o schema que chega ao provider fake se chama `igris_envelope_headless` |
-| `in-process.js` L418 | **novo** teste em `shadows/test/in-process-runner.test.js` (com tools, o perfil usa `envelope`) com provider espião | `assert.equal(schema.name, 'igris_envelope_headless')`; sem tools o perfil é `nativo` (sem schema) — não afirmar nada |
+| `motor-llm.js` L534 | `powers/test/async-shadows/motor-llm.test.js`, spy `perfilSpy` já existente (~L663: `maxTurns`) | no spy, `prefixoRecebido = entrada.prefixoDoEnvelope` e `expect(prefixoRecebido).toBe('igris')` (o arquivo é vitest); opcional: `expect(schema.name).toBe('igris_envelope_headless')` no provider fake |
+| `in-process.js` L418 | **novo** teste em `shadows/test/in-process-runner.test.js` (com tools, o perfil usa `envelope`) com provider espião | `expect(schema.name).toBe('igris_envelope_headless')` (vitest); sem tools o perfil é `nativo` (sem schema) — não afirmar nada |
 
-(`orchestrator/test/fabrica.test.js` L119, que afirma `igris_envelope_headless`, **muda para o
-pacote**: lá o esperado passa a ser o neutro `envelope_headless`, com o `igris_…` provado só por
-`prefixo.test.js`/`envelope-schema-contribuicoes.test.js`. Não é prova do Igris.)
+(`orchestrator/test/fabrica.test.js` L119 **muda para o pacote** como `orquestrador/test/fabrica.test.js`:
+lá ele passa `prefixoDoEnvelope: 'igris'` (L103) e continua afirmando `igris_envelope_headless` (L120).
+Prova o mecanismo do pacote, não que o Igris passa o prefixo.)
 
 ### 4.2 Provedor do cliente de decisão — `criarProvedorDeCliente`
 
@@ -436,6 +440,8 @@ devolve `{ decidir: async ({ questions }) => { capturado = questions; return { a
 `capturado.next_tool.instructions.startsWith('Você roteia o assistente pessoal Igris. Dado o pedido do usuário')`.
 O texto completo de hoje está congelado, com o `assistente`, em `decisoes/test/nucleo-igualdade.test.js`
 daqui.
+O `ctx` precisa de **catálogo não vazio**: com catálogo vazio `decidir` devolve `catalogo-vazio` antes
+de chamar o cliente e `capturado` fica `undefined` (o teste falha alto, não passa em silêncio).
 
 **Outros parâmetros do CHANGELOG e a prova que cada um precisa** (mesma raiz de §4.1 e §4.3: o pacote
 trocou padrão por parâmetro e o Igris não prova que passa o valor antigo):
@@ -541,7 +547,7 @@ Além da troca de especificadores e dos parâmetros (que, com os valores da seç
 2. **Tool desconhecida no protocolo nativo orienta `call_capability`** (`1901880d`): só quando a estratégia
    tem `registraCapacidades === false`; em `envelope`/`fence` a mensagem segue a de antes.
 3. **`config.provider` é chamado com o ctx do turno** (`9f3fd177`): a função do Igris ignora o argumento.
-4. **kairos 0.840 → 0.841** (seção 1): mudança de dependência, não da biblioteca.
+4. **kairos:** a ligação não muda a versão (peer aceita 0.840 e 0.841). Subir para 0.841 é decisão separada e muda o `call_capability` (args soltos passam a chegar à tool) — ver seção 1.
 5. **Leitura de env do provedor de decisão passa a uma vez, no import** (4.2).
 6. **Nome prefixado >64 caracteres** lança em `nomeExposto` (antes, em `montarProviders`): mesmo erro, mais cedo.
 7. Nada mais muda de comportamento por construção: a cópia é literal, a genericização mantém o valor
@@ -555,7 +561,7 @@ Além da troca de especificadores e dos parâmetros (que, com os valores da seç
 4. Catálogo + `package.json` + override; `pnpm install`; `node scripts/check-git-deps.mjs`;
    `pnpm why genos-orchestrator` e `pnpm why @okds/kairos` → uma cópia só. Rodar a suíte só com o bump
    do kairos (commit próprio).
-5. Trocar especificadores (seção 3) **sem apagar nada** — as duas cópias coexistem; commit mecânico.
+5. Trocar especificadores (seção 3) **sem apagar nada** — as duas cópias coexistem; commit mecânico. Exceção: `executor/src/orchestration/decisoes.js` troca junto com o §4.2 (passo 6), senão o executor fica vermelho entre os passos.
 6. Passar os parâmetros (seção 4) e os ajustes da seção 5; commit.
 7. `node scripts/suite.mjs --so executor,powers,shadows,api,orchestrator,decisions`; só então:
 8. Apagar o que a seção 7 lista (commit separado, para o diff de review ser só remoção).

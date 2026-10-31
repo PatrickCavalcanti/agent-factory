@@ -44,7 +44,7 @@ Primeira versão: a fábrica do Igris como biblioteca própria.
 - `nomeExposto` delega a `exposedName` de `@okds/kairos/core/names`; nome prefixado com mais de 64
   caracteres lança já em `nomeExposto` (`209fe07`).
 - `refino.test.js` lê a versão do kairos pelo pacote resolvido, não por caminho fixo.
-- `@okds/kairos` (`^0.841.261021`) e `genos-orchestrator` (`^0.3.12`) são `peerDependencies`
+- `@okds/kairos` (`>=0.840.261021 <0.842.0` — a 0.841 só muda o `call_capability` do bridge; o consumidor escolhe) e `genos-orchestrator` (`^0.3.12`) são `peerDependencies`
   (semver, porque o pnpm recusa URL git em peer) e `devDependencies` (URL git); `zod` é dependência.
 
 ### Quebras em relação a `@igris/orchestrator` e `@igris/decisions`
