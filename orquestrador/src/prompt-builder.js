@@ -519,7 +519,7 @@ function nivelDoBloco(destino) {
  */
 
 /** @type {NomesDeSecao} */
-const NOMES_PADRAO = {
+export const NOMES_PADRAO = {
   capacidades: 'capabilities',
   capacidade: 'capability',
   // Layout `diario` (spec 2026-10-15): descrição ou funções que chegam DEPOIS do cartão de uma
@@ -533,6 +533,29 @@ const NOMES_PADRAO = {
   candidatos: 'suggested_capabilities',
   habilidades: 'suggested_skills',
   operacoes: 'turn_operations',
+}
+
+/**
+ * Remove registros de operações imitados pelo modelo no texto da resposta,
+ * antes de costurar o bloco da plataforma no histórico (senão o bloco aparece
+ * duas vezes e o modelo passa a imitá-lo). Bloco aberto sem fechamento
+ * descarta o resto do texto. (Do Ariadne 7d5e76e5.)
+ * @param {string} texto
+ * @param {string} [nome] nome da tag (padrão `NOMES_PADRAO.operacoes`)
+ */
+export function removerBlocosDeOperacoes(texto, nome = NOMES_PADRAO.operacoes) {
+  const abertura = `<${nome}>`;
+  const fechamento = `</${nome}>`;
+  let limpo = '';
+  let inicio = 0;
+  let abre;
+  while ((abre = texto.indexOf(abertura, inicio)) !== -1) {
+    limpo += texto.slice(inicio, abre);
+    const fecha = texto.indexOf(fechamento, abre + abertura.length);
+    if (fecha === -1) return limpo;
+    inicio = fecha + fechamento.length;
+  }
+  return limpo + texto.slice(inicio);
 }
 
 /**

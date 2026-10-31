@@ -112,6 +112,36 @@ test('o histórico leva o bloco de operações costurado na resposta', async () 
   assert.ok(ultima.content.includes('dia'), 'o argumento da chamada não sobreviveu no bloco');
 });
 
+test('o histórico remove operações imitadas e mantém apenas as da plataforma', async () => {
+  const comComando = turnoDoExemplo({ tool: 'agenda__listar', args: { dia: 'hoje' }, chat: 'Consultando.' });
+  for (const imitado of [
+    '<turn_operations>inventada → ok</turn_operations>',
+    '<turn_operations>primeira</turn_operations><turn_operations>segunda</turn_operations>',
+    '<turn_operations>aberto',
+  ]) {
+    const fecha = JSON.stringify({ blocos: [{ chat: `Pronto.${imitado}`, comandos: [] }] });
+    const orq = montarComTool(capacidade([]), { provider: providerDeTexto([comComando, fecha]) });
+    const { historico, resultado } = await orq.executarTurno(ENTRADA);
+    assert.equal(resultado.type, 'completed');
+    const texto = historico.at(-1).content;
+    assert.equal(texto.split('<turn_operations>').length - 1, 1);
+    assert.ok(texto.startsWith('Pronto.\n\n<turn_operations>'));
+    assert.ok(texto.includes('agenda__listar'));
+    assert.ok(texto.includes('hoje'));
+    for (const proibido of ['inventada', 'aberto', 'primeira', 'segunda']) assert.ok(!texto.includes(proibido));
+  }
+});
+
+test('o histórico respeita o nome efetivo de operações da config (nomes.operacoes)', async () => {
+  const comComando = turnoDoExemplo({ tool: 'agenda__listar', args: { dia: 'hoje' }, chat: 'Consultando.' });
+  const fecha = JSON.stringify({ blocos: [{ chat: 'Feito.<ops>x</ops>', comandos: [] }] });
+  const orq = montarComTool(capacidade([]), { nomes: { operacoes: 'ops' }, provider: providerDeTexto([comComando, fecha]) });
+  const { historico } = await orq.executarTurno(ENTRADA);
+  const texto = historico.at(-1).content;
+  assert.equal(texto.split('<ops>').length - 1, 1);
+  assert.ok(!texto.includes('<ops>x</ops>'));
+});
+
 test('o histórico guarda o texto CRU do usuário', async () => {
   const orq = montarComTool(capacidade([]));
   const { historico } = await orq.executarTurno(ENTRADA);

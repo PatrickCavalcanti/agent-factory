@@ -13,7 +13,7 @@ import { createManager, isTrivial } from '@okds/kairos/resolve';
 import { centeredStrategy } from '@okds/kairos/index/similarity';
 import { applySessionPolicy, initialSessionState } from '@okds/kairos/session';
 import { assemble, groupBlocks } from '@okds/kairos/assemble';
-import { criarConstrutorDePrompt, systemVazio, classificar } from './prompt-builder.js';
+import { criarConstrutorDePrompt, systemVazio, classificar, removerBlocosDeOperacoes } from './prompt-builder.js';
 // Cauda efêmera e despejo (spec 2026-10-29): módulos puros em ./despejo/. Tudo atrás de dois interruptores
 // (`config.despejo.cauda` / `.despejo`) que entram DESLIGADOS — desligado, o turno é byte a byte o de antes.
 import { normalizarDespejo, parametrosDoModelo } from './despejo/config.js';
@@ -4113,7 +4113,7 @@ export function criarOrquestrador(config) {
           role: 'assistant',
           // No teto, o aviso entra no histórico: é o que o usuário vê, e o "sim, continua" do
           // turno seguinte só faz sentido se o modelo souber que perguntamos.
-          content: [texto, blocoDeOperacoes, tetoAtingido ? AVISO_TETO_DE_ITERACOES : ''].filter(Boolean).join('\n\n'),
+          content: [removerBlocosDeOperacoes(texto, config.nomes?.operacoes), blocoDeOperacoes, tetoAtingido ? AVISO_TETO_DE_ITERACOES : ''].filter(Boolean).join('\n\n'),
         },
       ];
 
