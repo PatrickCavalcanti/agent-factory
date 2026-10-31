@@ -102,7 +102,7 @@ tool, power, sessão nem `ctx`.
 | `src/estado.js` | `montarEstado()` — monta o `state` que o Jev recebe a partir do que o host entrega; clip por bloco e chama `cortarEstado` (núcleo) com a ordem de corte específica da hidratação quando estoura `tetoChars`. |
 | `src/candidatos.js` | `aplicarEstrategiasDeCandidatos()` — propõe valores plausíveis (ex.: texto entre aspas do pedido) para parâmetros de texto livre de tools de prefetch, como opções de baixa confiança (`candidatoDinamico`) — adendo §14. |
 | `src/gates.js` | `aplicarGates()` — lê o `answers` cru do Jev e aplica as faixas de confiança: `sugestao` (top-k de `next_tool`, era `hidratar` antes da Fase 1), `hidratar` (um `noul` por power candidato, `powersCandidatos`, acima de `CORTES_PADRAO.hidratarPower` — Fase 1), quais prefetch entram, quais dicas de argumento valem, quais respostas de power voltam agrupadas. |
-| `src/perguntas.js` | Textos fixos das perguntas (`next_tool`, `pronto`, prefetch, argumento) — **não é código, é calibração**: o texto em si foi medido pela bancada. |
+| `src/perguntas.js` | Textos fixos das perguntas (`next_tool`, `pronto`, prefetch, argumento) — **não é código, é calibração**: o texto em si foi medido pela bancada. Só o nome do assistente no `next_tool` é parâmetro (`instrucoesNextTool(assistente)`, ver "Parâmetros que eram do Igris"). |
 
 `eval/` não é um módulo de produção — é a bancada de calibração (ver
 abaixo), versionada ao lado do código que ela mede.
@@ -357,8 +357,9 @@ O texto do resto deste documento ainda cita as envs e os nomes antigos.
 | `consumer` | `criarProvedorDeCliente`, `criarClienteDoGateway` | **obrigatório** | `'module:executor'` (`'eval:decisions'` na bancada) |
 | `xTitle` | `criarCliente`, `criarProvedorDeCliente` | `'agent-factory'` | `'igris-decisions'` |
 | `resolver` | `embedderDoRoteamento` (`treino/lib/embedder.js`) | **obrigatório** (antes: import dinâmico de `@igris/embeddings`) | `getProviderForRole` de `@igris/embeddings` (sem chamador hoje) |
-| `raizPowers` | `extrairCasos`, `pisoIncondicional`, `criarServicoDeTreino` | **obrigatório** (antes: `RAIZ_POWERS_PADRAO`, relativo ao monorepo) | `packages/powers/src/powers` (caminho absoluto) |
+| `raizPowers` | `extrairCasos`, `pisoIncondicional`, `criarServicoDeTreino` | **obrigatório** (antes: `RAIZ_POWERS_PADRAO`, relativo ao monorepo); `criarServicoDeTreino` lança já na criação se o extrator é o padrão e ele falta | `packages/powers/src/powers` (caminho absoluto) |
 | `dirCache` | `criarServicoDeTreino` (`treino/lib/servico.js`) | `(dataDir) => join(dataDir, 'agent-factory', 'cache')` | `(dataDir) => join(dataDir, 'igris', 'cache')` |
+| `assistente` | `montarPerguntas`, `decidir` (`src/index.js`), `instrucoesNextTool` (`src/perguntas.js`) | `'assistente pessoal'` (o texto do `next_tool` começa `Você roteia o assistente pessoal.`) | `'assistente pessoal Igris'` (texto de antes, byte a byte) |
 
 Valores exatos e arquivos do Igris que os passam: [`../MIGRACAO-IGRIS.md`](../MIGRACAO-IGRIS.md) §4.
 

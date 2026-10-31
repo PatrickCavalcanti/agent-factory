@@ -24,12 +24,19 @@ Primeira versão: a fábrica do Igris como biblioteca própria.
   protocolo nativo — `mensagemDeToolDesconhecida` (`c52b2b4`), `removerBlocosDeOperacoes` e
   `NOMES_PADRAO` exportados de `prompt-builder` (`af11bb5`).
 - `config.genos`: opções extras para o `createOrchestrator` do genos; as da fábrica vencem (`355b9a3`).
-- `test/contrato.test.js` (congela os 40 subpaths e os nomes exportados) e `test/pureza.test.js`
+- `test/contrato.test.js` (congela os 52 subpaths e os nomes exportados) e `test/pureza.test.js`
   (falha com `@igris/`, `IGRIS_` em código ou import relativo para fora do pacote) (`116b2c6`).
 - Subpaths para o código que fica no Igris: `./decisoes/{args,conferencia,conferencia-texto,linha-sinal,sombra}`
   e `./despejo/{config,registro-de-uso,conta,despejar,cauda,aviso,costura}`.
 - `perfilAgenteLlm` e `perfilShadowLoop` aceitam `prefixoDoEnvelope` na entrada (vai para
   `protocoloOpts.prefixoDoEnvelope`; sem ele, nome neutro).
+- `instrucoesNextTool(assistente)` (`./decisoes/perguntas`, export novo) e a opção `assistente` em
+  `montarPerguntas`/`decidir`: o texto do `next_tool` deixa de dizer "Igris" (padrão neutro:
+  `assistente pessoal`); o Igris passa `'assistente pessoal Igris'` e recebe o texto de antes, byte a byte.
+  `INSTRUCOES_NEXT_TOOL` continua exportado, agora com o texto neutro.
+- `test/pureza.test.js` cobre também `process['env']`/`process?.env`, desestruturação de `process.env`
+  (`const { env } = process`), `new URL('…', import.meta.url)` e `createRequire(…)(…)` que saiam da
+  raiz do pacote.
 - `README.md`, `ORIGEM.md`, `MIGRACAO-IGRIS.md`, `docs/pendencias/2026-10-31-criacao.md`.
 
 ### Alterado
@@ -46,20 +53,27 @@ Primeira versão: a fábrica do Igris como biblioteca própria.
   `@igris/decisions[/x]` → `@okds/agent-factory/decisoes[/x]`. `@igris/orchestrator/bancada` saiu.
 - **Nome do schema do envelope:** o padrão deixa de ser `igris_envelope*` e passa a `envelope*`;
   para os bytes do Igris, `protocoloOpts: { prefixoDoEnvelope: 'igris' }` — inclusive depois dos
-  perfis `perfilAgenteLlm`/`perfilShadowLoop`, que não repassam o prefixo. As constantes `SCHEMA_*`
-  têm nome neutro; o nome do Igris vem de `schemasDoEnvelope('igris')`.
+  perfis `perfilAgenteLlm`/`perfilShadowLoop`, que repassam o prefixo recebido na `entrada`
+  (`prefixoDoEnvelope`). As constantes `SCHEMA_*` têm nome neutro; o nome do Igris vem de
+  `schemasDoEnvelope('igris')`.
 - **`consumer` obrigatório** em `criarClienteDoGateway` e `criarProvedorDeCliente` (era `'module:executor'`).
 - **Fim da leitura de `process.env`** em `criarProvedorDeCliente`: `IGRIS_TEST`, `NODE_ENV`,
   `IGRIS_DECISOES_BANCADA`, `IGRIS_DECISOES_CHAVE` viram `modoBancada`/`chaveDeBancada`, lidos pelo host.
 - **`X-Title`** padrão `'agent-factory'` (era `'igris-decisions'`): `xTitle`.
 - **`raizPowers` obrigatório** em `extrairCasos`, `pisoIncondicional` e `criarServicoDeTreino`;
-  `RAIZ_POWERS_PADRAO` deixou de ser exportado.
+  `RAIZ_POWERS_PADRAO` deixou de ser exportado. `criarServicoDeTreino` com o extrator padrão sem
+  `raizPowers` lança já na criação (`TypeError`), não só no primeiro `treinar()`.
 - **`embedderDoRoteamento({ resolver })` obrigatório**: some o import dinâmico de `@igris/embeddings`.
 - **Cache de embeddings do treino:** `<dataDir>/agent-factory/cache` (era `<dataDir>/igris/cache`);
   `dirCache` devolve o do Igris.
 - **Peças de apoio** deixam de ser relativas ao executor (`./conversa.js` → `@okds/agent-factory/apoio/conversa`).
-- **Histórico da conversa** (comportamento): o `<turn_operations>` imitado pelo modelo é removido antes
-  de costurar o bloco da plataforma; bloco aberto sem fechamento descarta o resto do texto.
+- **Histórico da conversa** (comportamento): o `<turn_operations>…</turn_operations>` completo imitado
+  pelo modelo é removido antes de costurar o bloco da plataforma. Só blocos completos: abertura sem
+  fechamento (inclusive a tag citada em prosa) mantém o texto intacto — o porte do Ariadne `7d5e76e5`
+  descartava o resto da resposta.
+- **Nome da tag de operações:** `nomes.operacoes` explicitamente `undefined` cai no padrão
+  (`turn_operations`) no construtor de prompt (antes virava a tag `<undefined>`), e o histórico remove
+  com o mesmo nome efetivo que o construtor usa (`construtor.removerOperacoes`).
 - **Tool desconhecida no protocolo nativo** responde com a orientação de `call_capability`.
 
 Ligação do Igris: [`MIGRACAO-IGRIS.md`](./MIGRACAO-IGRIS.md).

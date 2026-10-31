@@ -60,22 +60,26 @@ catalog:
 
 ### `package.json` por pacote
 
-O peer `@okds/kairos`/`genos-orchestrator` é semver, não URL: **cada pacote que dependa de
-`@okds/agent-factory` tem de declarar também `@okds/kairos` e `genos-orchestrator`** (`"catalog:"`).
-Quem não declara faz o pnpm tentar resolver o peer por faixa semver — e nenhum registry tem esses
-pacotes — ou, pior, instalar uma segunda cópia. Verificar no primeiro install com
-`pnpm why genos-orchestrator` e `pnpm why @okds/kairos` (uma versão/commit só em todos os importers)
-**(conferir)**.
+O peer `@okds/kairos`/`genos-orchestrator` é semver, não URL. **Regra única, aplicada em todas as
+linhas da tabela:** declarar `@okds/kairos` e `genos-orchestrator` (`"catalog:"`) (a) **na raiz do
+workspace** (`package.json` da raiz; o pnpm resolve o peer a partir dos `dependencies` da raiz,
+`resolvePeersFromWorkspaceRoot`, ligado por padrão) **e** (b) **em cada pacote que importa
+`@okds/agent-factory`** — junto com o próprio `@okds/agent-factory`. Quem não declara faz o pnpm tentar
+resolver o peer por faixa semver — e nenhum registry tem esses pacotes — ou, pior, instalar uma
+segunda cópia. Verificar no primeiro install com `pnpm why genos-orchestrator` e
+`pnpm why @okds/kairos` (uma versão/commit só em todos os importers) **(conferir** se (a) sozinho já
+basta; até confirmar, vale a regra completa)**.
 
 | `package.json` | Mudança |
 |---|---|
 | `packages/executor` | remove `"@igris/decisions": "workspace:*"` (L14) e `"@igris/orchestrator": "workspace:*"` (L23); adiciona `"@okds/agent-factory": "catalog:"` e `"@okds/kairos": "catalog:"` (`genos-orchestrator` e `zod` já estão) |
 | `packages/powers` | remove `"@igris/orchestrator": "workspace:*"` (L25); adiciona `"@okds/agent-factory": "catalog:"` e `"@okds/kairos": "catalog:"` (genos já está) |
 | `packages/shadows` | remove `"@igris/orchestrator": "workspace:*"` (L13); adiciona `@okds/agent-factory` e `@okds/kairos` (genos já está) |
-| `packages/api` | `api/test/routes/decisoes.test.js` passa a importar o pacote: `devDependencies` + `@okds/agent-factory`, `@okds/kairos` (genos já está) |
-| raiz `package.json` | `scripts/eval/despejo.mjs` importa o pacote: `devDependencies` + `@okds/agent-factory`, `@okds/kairos`, `genos-orchestrator` |
+| `packages/api` | `api/test/routes/decisoes.test.js` passa a importar o pacote: `devDependencies` + `@okds/agent-factory`, `@okds/kairos` (genos já está; conferir) |
+| raiz `package.json` | (a) da regra acima e `scripts/eval/despejo.mjs` importa o pacote: `devDependencies` + `@okds/agent-factory`, `@okds/kairos`, `genos-orchestrator` |
 | `packages/orchestrator` (fica magro, seção 8) | `dependencies`: `@okds/agent-factory`, `@okds/kairos`, `genos-orchestrator` (`catalog:`), `zod`; `exports` fica só com `"./bancada": "./bancada/servir.mjs"`; `main` sai |
-| `packages/decisions` (fica magro, seção 8) | `dependencies`: `@okds/agent-factory` (`catalog:`), `@igris/providers` (`workspace:*`, já está; `eval/_cliente.mjs` usa); `exports` e `main` saem |
+| `packages/decisions` (fica magro, seção 8) | `dependencies`: `@okds/agent-factory`, `@okds/kairos`, `genos-orchestrator` (`catalog:`), `@igris/providers` (`workspace:*`, já está; `eval/_cliente.mjs` usa); `exports` e `main` saem |
+| `packages/electron` | empacota tudo no asar; hoje declara `genos-orchestrator` e não declara `@okds/kairos` nem `@okds/agent-factory`. Avaliar declarar `@okds/agent-factory` e `@okds/kairos` (`catalog:`) aqui também, para o electron-builder levar o git-dep e os peers dele para o `node_modules` do asar — decidir pelo resultado da verificação do §10 (passo 11), que é obrigatória |
 | `pnpm-lock.yaml` | regenerado pelo `pnpm install` (hoje 4 linhas citam `@igris/orchestrator`/`@igris/decisions`) |
 
 Install (Windows, no Igris): `pnpm install` normal; a variável `GIT_CONFIG_*` de ambiente de nuvem não se aplica.
@@ -133,12 +137,12 @@ também somem.
 | Arquivo | Linhas: especificador atual → novo |
 |---|---|
 | `packages/api/test/routes/decisoes.test.js` | L183: `../../../decisions/treino/lib/registro.js` → `@okds/agent-factory/decisoes/registro`<br>L207: `../../../decisions/treino/lib/registro.js` → `@okds/agent-factory/decisoes/registro`<br>L208: `../../../decisions/treino/lib/versoes.js` → `@okds/agent-factory/decisoes/versoes`<br>L209: `../../../decisions/treino/lib/caso.js` → `@okds/agent-factory/decisoes/caso` |
-| `packages/executor/test/decisoes.test.js` | L10: `@igris/decisions/nucleo` → `@okds/agent-factory/decisoes/nucleo` |
+| `packages/executor/test/decisoes.test.js` | L10: `@igris/decisions/nucleo` → `@okds/agent-factory/decisoes/nucleo` (e mais: `consumer` nas chamadas de L735 e L784, §5; testes novos de §4.2.1 e §4.8) |
 | `packages/executor/test/envelope-stream-schema-integration.test.js` | L4: `@igris/orchestrator/protocolo/envelope-schema` → `@okds/agent-factory/protocolo/envelope-schema` |
 | `packages/executor/test/fabrica-aquecimento-sessao.test.js` | L117: `@igris/orchestrator` → `@okds/agent-factory`<br>L118: `@igris/orchestrator/prompt-builder` → `@okds/agent-factory/prompt-builder` |
 | `packages/executor/test/fabrica-aquecimento.test.js` | L69: `@igris/orchestrator` → `@okds/agent-factory`<br>L70: `@igris/orchestrator` → `@okds/agent-factory` |
 | `packages/executor/test/fabrica-autorizacoes.test.js` | L8: `@igris/orchestrator/loop-do-turno` → `@okds/agent-factory/loop-do-turno`<br>L95: `@igris/orchestrator` → `@okds/agent-factory`<br>L96: `@igris/orchestrator` → `@okds/agent-factory` |
-| `packages/executor/test/fabrica-continuidade-turno.test.js` | L867: `@igris/orchestrator/protocolo/envelope-schema` → `@okds/agent-factory/protocolo/envelope-schema`<br>L883: `@igris/orchestrator/protocolo/envelope-schema` → `@okds/agent-factory/protocolo/envelope-schema` |
+| `packages/executor/test/fabrica-continuidade-turno.test.js` | L867: `@igris/orchestrator/protocolo/envelope-schema` → `@okds/agent-factory/protocolo/envelope-schema`<br>L883: `@igris/orchestrator/protocolo/envelope-schema` → `@okds/agent-factory/protocolo/envelope-schema`<br>**+ L873/L895: `prefixoDoEnvelope: 'igris'` no esperado (§4.1)** |
 | `packages/executor/test/fabrica-contribuicoes.test.js` | L5: `@igris/orchestrator` → `@okds/agent-factory`<br>L9: `@igris/orchestrator/prompt-builder` → `@okds/agent-factory/prompt-builder` |
 | `packages/executor/test/fabrica-fala-incremental.test.js` | L44: `@igris/orchestrator` → `@okds/agent-factory`<br>L45: `@igris/orchestrator` → `@okds/agent-factory` |
 | `packages/executor/test/fabrica-fala-preenchimento.test.js` | L33: `@igris/orchestrator` → `@okds/agent-factory`<br>L34: `@igris/orchestrator` → `@okds/agent-factory` |
@@ -212,7 +216,7 @@ Regra de F2: padrão neutro + parâmetro; o Igris passa o valor de antes para o 
 Sem o prefixo o schema sai `envelope`/`envelope_headless`/`envelope_contribuicoes`; com `'igris'`
 sai `igris_envelope*` **byte a byte** como hoje (provado por `envelope-schema-contribuicoes.test.js`).
 O nome entra na chave de cache de gramática do vendor: esquecer um ponto muda o nome naquele ponto e
-invalida o cache dele. **São cinco pontos**, não um:
+invalida o cache dele. **São cinco pontos**, não um (confirmados por grep em `igris@430d2c9`):
 
 | Onde (Igris) | Hoje | Passa a |
 |---|---|---|
@@ -236,41 +240,109 @@ criarOrquestrador(perfilShadowLoop({ /* …como hoje… */, prefixoDoEnvelope: '
 (deps.perfilAgenteLlm || perfilAgenteLlm)({ /* …como hoje… */, prefixoDoEnvelope: 'igris' });
 ```
 
-(`motor-llm.test.js` espia o perfil por `deps.perfilAgenteLlm`: o teste pode afirmar a opção na
-entrada.) Esses são os dois únicos chamadores dos perfis fora de testes (grep no Igris).
+Esses são os dois únicos chamadores dos perfis fora de testes (grep no Igris).
 `bancada/cenarios/chat-igris.mjs` L28 repete `protocoloOpts: { headless: false }`: mesmo ajuste (só
 fidelidade da bancada).
 
 As constantes `SCHEMA_COMPLETA`/`SCHEMA_HEADLESS` importadas pelos testes
 `executor/test/{envelope-stream-schema-integration,streaming-envelope-deltas}.test.js` agora têm nome
-neutro; os dois testes só usam `.schema`/identidade (conferido por grep: nenhum afirma `igris_envelope`),
-então seguem verdes. Para o nome do Igris: `schemasDoEnvelope('igris').completa`.
+neutro; esses dois testes só usam `.schema`/identidade (conferido por grep: nenhum afirma
+`igris_envelope`), então seguem verdes. Para o nome do Igris: `schemasDoEnvelope('igris').completa`.
+
+**Os testes que comparam o schema do TURNO com `resolveEnvelopeSchema(...)` NÃO seguem verdes sem
+ajuste.** `executor/test/fabrica-continuidade-turno.test.js` L873 (teste 24) e L895 (teste 25)
+comparam `schemas[0]` com `resolveEnvelopeSchema({ headless: false, … })` *sem prefixo*; depois que o
+`turno.js` passar `prefixoDoEnvelope: 'igris'`, o schema capturado sai `igris_envelope*` e o esperado
+(neutro) fica diferente — vermelho. Em L873 **e** L895 (e nos `notEqual`/variantes ao lado, L874) o
+esperado também passa `prefixoDoEnvelope: 'igris'`: `resolveEnvelopeSchema({ headless: false,
+comContribuicoes: true, prefixoDoEnvelope: 'igris' })`.
+
+**Prova por ponto (a regra do pacote — padrão neutro + parâmetro — só vale se o Igris provar que passa o
+valor antigo).** Em cada um dos cinco pontos, uma asserção de nome, não de igualdade com outra chamada:
+
+| Ponto | Teste (Igris) | Asserção a acrescentar |
+|---|---|---|
+| `perfil.js` L346 | `executor/test/fabrica-perfil.test.js` (L41 já afirma `config.protocoloOpts.headless === false`) | `assert.equal(config.protocoloOpts.prefixoDoEnvelope, 'igris')` |
+| `turno.js` L1482 | testes 24 e 25 de `fabrica-continuidade-turno.test.js` | `assert.equal(schemas[0].name, 'igris_envelope_contribuicoes')` (24) e `'igris_envelope'` (25), além do ajuste acima |
+| `executor.js` L363 | **novo** teste em `executor/test/` que capture o `responseSchema` entregue ao provider no caminho do `executor.js` (molde: `turnoCapturandoSchema` do teste 24, ou o provider espião de `streaming-envelope-deltas.test.js`) | `assert.equal(schema.name, 'igris_envelope')` (e `'igris_envelope_headless'` com `ctx.headless === true`) |
+| `motor-llm.js` L534 | `powers/test/async-shadows/motor-llm.test.js`, spy `perfilSpy` já existente (~L663: `maxTurns`) | no spy, `prefixoRecebido = entrada.prefixoDoEnvelope` e `assert.equal(prefixoRecebido, 'igris')`; opcional: o schema que chega ao provider fake se chama `igris_envelope_headless` |
+| `in-process.js` L418 | **novo** teste em `shadows/test/in-process-runner.test.js` (com tools, o perfil usa `envelope`) com provider espião | `assert.equal(schema.name, 'igris_envelope_headless')`; sem tools o perfil é `nativo` (sem schema) — não afirmar nada |
+
+(`orchestrator/test/fabrica.test.js` L119, que afirma `igris_envelope_headless`, **muda para o
+pacote**: lá o esperado passa a ser o neutro `envelope_headless`, com o `igris_…` provado só por
+`prefixo.test.js`/`envelope-schema-contribuicoes.test.js`. Não é prova do Igris.)
 
 ### 4.2 Provedor do cliente de decisão — `criarProvedorDeCliente`
 
 Onde: `packages/executor/src/orchestration/decisoes.js` L103 (`PROVEDOR_CLIENTE`).
 
 ```js
+// packages/executor/src/orchestration/decisoes.js — as opções novas saem de funções exportadas (testáveis):
+export const modoBancadaDoAmbiente = (env) => env.IGRIS_TEST === '1' || env.NODE_ENV === 'test' || env.IGRIS_DECISOES_BANCADA === '1';
+export const opcoesDoProvedorDeCliente = (env = process.env) => ({
+  modoBancada: modoBancadaDoAmbiente(env),
+  chaveDeBancada: env.IGRIS_DECISOES_CHAVE,
+  consumer: 'module:executor',
+  xTitle: 'igris-decisions',
+});
+
 const PROVEDOR_CLIENTE = criarProvedorDeCliente({
   listarContas: listAccounts,
   fetchImpl: TRANSPORTE,
   timeoutMs: Math.max(TETO_TARDIO_MS, TIMEOUT_MS),
   aquecerDecisao,
   criarProtocoloDoGateway: (conta) => buildProtocol(conta),
-  // novos (eram lidos de process.env / literais dentro de nucleo/provedor.js e cliente-gateway.js):
-  modoBancada: process.env.IGRIS_TEST === '1' || process.env.NODE_ENV === 'test' || process.env.IGRIS_DECISOES_BANCADA === '1',
-  chaveDeBancada: process.env.IGRIS_DECISOES_CHAVE,
-  consumer: 'module:executor',
-  xTitle: 'igris-decisions',
+  ...opcoesDoProvedorDeCliente(), // novos (eram lidos de process.env / literais dentro de nucleo/provedor.js e cliente-gateway.js)
 });
 ```
 
 - `consumer` agora é **obrigatório** (lança sem ele), em `criarProvedorDeCliente` e em `criarClienteDoGateway`.
 - **Mudança de momento da leitura:** o `process.env` era lido a cada `obter()`; agora é lido uma vez,
-  quando `decisoes.js` é importado. Conferido: nenhum teste do Igris **seta** `IGRIS_DECISOES_CHAVE`
-  depois do import (`executor/test/decisoes.test.js` L741–861 só faz `delete` e restaura;
-  `_ambiente-de-teste.js` fixa `''` antes). Se algum dia um teste precisar ligar a bancada, tem de
-  construir outro provedor com `modoBancada: true`.
+  quando `decisoes.js` é importado. Conferido **só quanto à env**: nenhum teste do Igris **seta**
+  `IGRIS_DECISOES_CHAVE` depois do import (`executor/test/decisoes.test.js` L741–861 só faz `delete` e
+  restaura; `_ambiente-de-teste.js` fixa `''` antes). Se algum dia um teste precisar ligar a bancada, tem
+  de construir outro provedor com `modoBancada: true`. **Esta conferência não cobria `consumer`:** o mesmo
+  arquivo tem duas chamadas de `criarProvedorDeCliente` sem ele (L735 e L784), que passam a lançar — ver §5.
+- **Calcular `modoBancada` numa função do host, não inline** (ver §4.2.1): `modoBancadaDoAmbiente(env)`.
+#### 4.2.1 A trava M-1 (chave paga só com opt-in explícito) perdeu o teste — repor no host
+
+No Igris a regra era provada em `packages/decisions/test/provedor-gateway.test.js` (helper `semOptIn()` +
+3 casos: **L87** `IGRIS_DECISOES_BANCADA=1` sobrepõe o gateway; **L106** `IGRIS_DECISOES_CHAVE` é ignorada
+sem nenhum opt-in e cai no gateway normal; **L126** sem opt-in e sem conta de gateway devolve `null`) e em
+`provedor.test.js` L123–145 (o equivalente: `IGRIS_DECISOES_BANCADA=1` sobrepõe `listarContas`). Esses
+testes **apagam com `packages/decisions/test/`** (§7). No pacote ficam os equivalentes de **parâmetro**
+(`decisoes/test/provedor-gateway.test.js` L67–95: `modoBancada`/`chaveDeBancada`), mas a parte que
+importava — *qual ambiente liga o modo bancada* — mudou de dono e **hoje não tem teste em lugar nenhum**:
+o app empacotado nunca seta `NODE_ENV=production`, e um `modoBancada` calculado errado volta a contornar
+o gateway em silêncio (a razão do M-1).
+
+Prescrição: extrair `modoBancadaDoAmbiente(env)` (bloco acima) e portar para ela, em
+`packages/executor/test/decisoes.test.js`, os 3 casos antigos mais as duas variantes que o comentário
+do M-1 prometia e nenhum teste cobria:
+
+```js
+test('modoBancadaDoAmbiente: sem nenhum opt-in é false, não importa NODE_ENV (M-1; era provedor-gateway L106/L126)', () => {
+  for (const env of [{}, { NODE_ENV: 'production' }, { NODE_ENV: 'development' }, { IGRIS_TEST: '0' }, { IGRIS_DECISOES_BANCADA: '0' }, { IGRIS_DECISOES_CHAVE: 'sk-x' }])
+    assert.equal(modoBancadaDoAmbiente(env), false, JSON.stringify(env));
+});
+test('modoBancadaDoAmbiente: cada opt-in explícito liga (era provedor-gateway L87 e provedor.test L123)', () => {
+  for (const env of [{ IGRIS_DECISOES_BANCADA: '1' }, { IGRIS_TEST: '1' }, { NODE_ENV: 'test' }])
+    assert.equal(modoBancadaDoAmbiente(env), true, JSON.stringify(env));
+});
+test('opcoesDoProvedorDeCliente: com chave mas sem opt-in, a chave viaja mas o modo fica desligado → o pacote a ignora', async () => {
+  const o = opcoesDoProvedorDeCliente({ IGRIS_DECISOES_CHAVE: 'sk-env-999' });
+  assert.equal(o.modoBancada, false);
+  const p = criarProvedorDeCliente({ ...o, listarContas: async () => [], criarProtocoloDoGateway: () => ({ decide: async () => ({}) }) });
+  assert.equal(await p.obter(), null, 'sem opt-in e sem conta de gateway a chave não vira fallback');
+});
+test('opcoesDoProvedorDeCliente: o que o Igris passava antes', () => {
+  const o = opcoesDoProvedorDeCliente({ IGRIS_TEST: '1', IGRIS_DECISOES_CHAVE: 'k' });
+  assert.deepEqual(o, { modoBancada: true, chaveDeBancada: 'k', consumer: 'module:executor', xTitle: 'igris-decisions' });
+});
+```
+
+(Este último é também a prova de `consumer` e `xTitle`, ver §4.8.)
+
 - `eval/_cliente.mjs` já passa `consumer: 'eval:decisions'` ao `criarClienteDoGateway` (L55): sem mudança.
   Nas três chamadas de `criarCliente` (L71, L92, L106) acrescentar `xTitle: 'igris-decisions'` (o
   padrão agora é `'agent-factory'`; `opcoes` ainda pode sobrepor).
@@ -297,6 +369,26 @@ passaria a gravar noutro diretório e o ganho do cache compartilhado some em sil
 `raizPowers` (caminho conferido: `api/src/routes` → `../../../` = `packages/`) é repassado ao
 `extrairCasos`/`pisoIncondicional` pelo serviço.
 
+`criarServicoDeTreino` agora **lança na criação** se o extrator é o padrão e `raizPowers` não veio
+(`TypeError`, mensagem cita `raizPowers`): esquecer o parâmetro no `criarServicoDeTreinoReal` vira
+`servicoIndisponivel` (503 nas duas rotas, o `catch` da função) já no boot da rota, não no primeiro
+`treinar()`.
+
+**Prova (não basta passar o valor; o teste tem de afirmá-lo):** no espião de `criarServicoDeTreinoReal`
+em `packages/api/test/routes/decisoes.test.js` (~L48–68, o `espiao = (opcoes) => { recebido = opcoes; … }`)
+acrescentar:
+
+```js
+// imports: existsSync de node:fs; join de node:path
+assert.equal(typeof recebido.raizPowers, 'string');
+assert.ok(existsSync(recebido.raizPowers), 'raizPowers aponta para uma pasta que existe');            // caminho existente
+assert.ok(existsSync(join(recebido.raizPowers, 'async-shadows')), 'e é a pasta de powers do Igris'); // um power conhecido
+assert.equal(recebido.dirCache('/dados'), join('/dados', 'igris', 'cache'));
+```
+
+(`dirCache(dir) === join(dir, 'igris', 'cache')` é o que impede o cache de embeddings do treino de ir
+para `<dataDir>/agent-factory/cache` em silêncio.)
+
 ### 4.4 Embedder do roteamento (treino) — `embedderDoRoteamento({ resolver })`
 
 O padrão (import dinâmico de `@igris/embeddings`) saiu; `resolver` é obrigatório. **Nenhum chamador
@@ -320,13 +412,54 @@ As 7 peças de apoio são só troca de import (seção 3).
 `config.pricingResolver`, `config.provider(ctx)` (a função de hoje ignora o argumento:
 `turno.js` L2054), `config.genos` (opções extras ao `createOrchestrator` do genos; as da fábrica vencem).
 
+### 4.8 Assistente nas perguntas do decisor — `assistente: 'assistente pessoal Igris'`
+
+`montarPerguntas` e `decidir` aceitam `assistente` (como o texto do `next_tool` chama o assistente). O
+padrão é neutro (`Você roteia o assistente pessoal. …`); com `'assistente pessoal Igris'` o texto sai
+**byte a byte** o de hoje (`INSTRUCOES_NEXT_TOOL` do Igris). Esquecer o parâmetro **troca o prompt do
+decisor em produção sem erro nenhum** — o tipo de falha que só uma asserção de texto pega. Pontos
+(grep em `igris@430d2c9`):
+
+| Onde | Mudança |
+|---|---|
+| `packages/executor/src/orchestration/decisoes.js` L542 (`decidir({…})`, produção) | acrescentar `assistente: 'assistente pessoal Igris'` |
+| `packages/decisions/eval/hidratacao-bracos.mjs` L274 (`decidir`) e L323 (usa `INSTRUCOES_NEXT_TOOL`) | L274: `assistente`; L323: `instrucoesNextTool('assistente pessoal Igris')` (novo export de `decisoes/perguntas`; `INSTRUCOES_NEXT_TOOL` agora é a versão neutra) |
+| `eval/hidratacao-bracos-2.mjs` L291, `hidratacao-bracos-3.mjs` L305 (`montarPerguntas`), `hidratacao-producao.mjs` L307, `prefetch-args.mjs` L196 (`decidir`) | `assistente: 'assistente pessoal Igris'` (as bancadas medem o texto calibrado; texto diferente invalida a comparação com `eval/resultados/`) |
+
+`fabrica/loop.js`/`rodarLoop` não montam o `next_tool` (só importam `enumUtilizavelDePrefetch`,
+`SEM_ARGUMENTO`, `FORA_DA_LISTA`): nada a passar lá (conferido por grep no pacote: `INSTRUCOES_NEXT_TOOL`
+só é usado em `montarPerguntas`).
+
+**Prova:** em `packages/executor/test/decisoes.test.js`, chamar `aplicarDecisoes(ctx, { obterCliente })`
+**com o `decidir` real** (não injetar `decidir`: o espião esconderia o texto) e um `obterCliente` que
+devolve `{ decidir: async ({ questions }) => { capturado = questions; return { answers: {} }; } }`; afirmar
+`capturado.next_tool.instructions.startsWith('Você roteia o assistente pessoal Igris. Dado o pedido do usuário')`.
+O texto completo de hoje está congelado, com o `assistente`, em `decisoes/test/nucleo-igualdade.test.js`
+daqui.
+
+**Outros parâmetros do CHANGELOG e a prova que cada um precisa** (mesma raiz de §4.1 e §4.3: o pacote
+trocou padrão por parâmetro e o Igris não prova que passa o valor antigo):
+
+| Parâmetro | Prova prescrita |
+|---|---|
+| `prefixoDoEnvelope` | §4.1 (cinco pontos) |
+| `raizPowers`, `dirCache` | §4.3 (espião de `criarServicoDeTreinoReal`) |
+| `modoBancada`/`chaveDeBancada` | §4.2.1 (`modoBancadaDoAmbiente`) |
+| `consumer`, `xTitle` (provedor) | §4.2.1, último teste (`opcoesDoProvedorDeCliente` com os quatro valores) |
+| `xTitle` em `eval/_cliente.mjs` (3 chamadas de `criarCliente`) | script de bancada, sem teste: `grep -c "xTitle: 'igris-decisions'" packages/decisions/eval/_cliente.mjs` → 3 |
+| `assistente` | este §4.8 |
+| `raizPowers` em `treino/casos.mjs` (CLI) | `node packages/decisions/treino/casos.mjs` contra um `--data` de bancada: sai com contagem de casos (hoje sem teste; é o caminho que lança `raizPowers é obrigatório` se esquecido) |
+| `embedderDoRoteamento({ resolver })` | sem chamador no Igris (nada a provar) |
+| `pricingResolver`, `provider(ctx)`, `genos` | opcionais: o Igris não passa; sem valor antigo a provar |
+
 ## 5. Ajustes de teste/script que não são troca de especificador
 
 | Onde | Mudança |
 |---|---|
 | `packages/executor/test/fabrica-piso-incondicional.test.js` L9, L20 | `RAIZ_POWERS_PADRAO` saiu do pacote. Definir `const RAIZ_POWERS = resolve(fileURLToPath(new URL('../../powers/src/powers', import.meta.url)))` e usar `pisoIncondicional({ raizPowers: RAIZ_POWERS })`. |
 | `packages/decisions/treino/casos.mjs` L3, L7 | idem: `extrairCasos({ dataDir: args.data, raizPowers: args.powers \|\| RAIZ_POWERS })` com `RAIZ_POWERS = resolve(fileURLToPath(new URL('../../powers/src/powers', import.meta.url)))` (igual ao que `sombra.mjs` L15 já faz). |
-| `packages/api/test/routes/decisoes.test.js` L107, L186, L217 | `criarServicoDeTreino({ obterPiso, obterDataDir, obterEmbedder })` sem `extrair` usa o `extrairCasos` real, que agora lança sem `raizPowers`. Passar `raizPowers` (ou `extrair` de teste) **(conferir** quais chegam à extração)**. |
+| `packages/executor/test/decisoes.test.js` L735, L784 | `criarProvedorDeCliente({ listarContas, criarProtocoloDoGateway })` sem `consumer` passa a lançar (`consumer é obrigatório`): acrescentar `consumer: 'module:executor'` nas duas chamadas. Conferido por grep: são as únicas duas chamadas de `criarProvedorDeCliente` do arquivo. |
+| `packages/api/test/routes/decisoes.test.js` L107, L186, L217 | `criarServicoDeTreino({ obterPiso, obterDataDir, obterEmbedder })` sem `extrair` usa o `extrairCasos` real, e `criarServicoDeTreino` agora lança **na criação** sem `raizPowers` (não só em `treinar()`): passar `raizPowers` (ou `extrair` de teste) em todas as três. Como a falha é na criação, o grep basta (não é preciso saber quais chegam à extração). |
 | `packages/decisions/test/perguntas-agnosticas.test.js` L26 | `PERGUNTAS_PATH` deixa de existir como arquivo local: `fileURLToPath(import.meta.resolve('@okds/agent-factory/decisoes/perguntas'))`. `POWERS_DIR` (L27) fica como está (o teste continua em `packages/decisions/test`). |
 | `packages/orchestrator/test/despejo-equivalencia-script.test.js` | só imports (3.4) + os subpaths `despejo/*` de `scripts/eval/despejo.mjs` (seção 0). |
 
@@ -394,10 +527,17 @@ pressa. Como importam:
 Além da troca de especificadores e dos parâmetros (que, com os valores da seção 4, são neutras):
 
 1. **Histórico sem bloco de operações duplicado** (porte do Ariadne `7d5e76e5`): o texto da resposta
-   do modelo que traga um `<turn_operations>` imitado tem esse bloco removido antes de a plataforma
-   costurar o seu. Bloco **aberto sem fechamento descarta o resto do texto** (pendência: avaliar se é o
-   desejado). Afeta o que vai para o histórico, portanto o prefixo do prompt dos turnos seguintes
-   (cache de prompt do vendor pode perder acerto uma vez).
+   do modelo que traga um `<turn_operations>…</turn_operations>` **completo** imitado tem esse bloco
+   removido antes de a plataforma costurar o seu. Só bloco completo sai: **abertura sem fechamento
+   mantém o texto intacto** (o porte original descartava o resto; mudado aqui porque bastava o modelo
+   citar a tag em prosa — "veja o `<turn_operations>` acima" — para perder o fim da resposta).
+   **Sem efeito no Igris** (conferido por grep em `igris@430d2c9`): o chat do Igris monta o histórico
+   pelo host (`stitchOperations`, `executor/src/prompt/stitch-operations.js`, usado por `executor.js` e
+   `fabrica/turno.js` L2420), cuja tag é `<operacoes_do_turno>`, não `turn_operations`; `turno.js`,
+   `motor-llm.js` e `in-process.js` não consomem `saida.historico` (o `motor-llm.js` L356 diz isso
+   expressamente) e o Igris não configura `nomes.operacoes`. O único leitor de `saida.historico` é a
+   bancada (`packages/orchestrator/bancada/rodar.mjs` L37), que realimenta o histórico do orquestrador
+   entre turnos — o prompt-builder do pacote é quem escreve o bloco nele, então ali a regra vale.
 2. **Tool desconhecida no protocolo nativo orienta `call_capability`** (`1901880d`): só quando a estratégia
    tem `registraCapacidades === false`; em `envelope`/`fence` a mensagem segue a de antes.
 3. **`config.provider` é chamado com o ctx do turno** (`9f3fd177`): a função do Igris ignora o argumento.
@@ -426,5 +566,16 @@ Além da troca de especificadores e dos parâmetros (que, com os valores da seç
    `pnpm test` neste repositório).
 10. Teste de comportamento real (bancada com relógio) do chat completo e de uma sombra headless: o
     schema que chega ao provider tem de se chamar `igris_envelope` / `igris_envelope_headless`
-    (confere os cinco pontos da 4.1).
-11. Entrega ≠ merge: perguntar ao dono "merge, ou usar na worktree?".
+    (confere os cinco pontos da 4.1; os testes por ponto da 4.1 e as provas de 4.2.1, 4.3 e 4.8 já
+    têm de estar verdes antes deste passo).
+11. **Instalador Electron e app empacotado (verificação obrigatória; não substituível pela suíte).** O
+    `@okds/agent-factory` é git-dep com peers (`@okds/kairos`, `genos-orchestrator`) resolvidos pelo pnpm
+    no workspace, e o electron-builder copia `node_modules` para dentro do asar: uma dependência que o
+    pnpm resolveu por link e o builder não levou só quebra no `.exe`. Rodar o build do instalador
+    (`packages/electron`, script de build/`electron-builder` do projeto), **instalar e abrir o app
+    empacotado**, e fazer um turno de chat e uma sombra headless (passo 10 já no app empacotado): o
+    `import '@okds/agent-factory'` resolve, só há **uma** cópia de `genos-orchestrator` e de
+    `@okds/kairos` dentro do asar (listar `resources/app.asar` ou `app.asar.unpacked`), e o schema
+    chega como `igris_envelope`. Se faltar módulo: declarar `@okds/agent-factory` e `@okds/kairos` em
+    `packages/electron/package.json` (hoje só declara `genos-orchestrator`; ver §1) e repetir.
+12. Entrega ≠ merge: perguntar ao dono "merge, ou usar na worktree?".

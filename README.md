@@ -37,7 +37,8 @@ catálogo do pnpm, a linha acima vai no catálogo e o `package.json` declara `"c
 
 `@okds/kairos` (`^0.841.261021`) e `genos-orchestrator` (`^0.3.12`) são **peerDependencies** —
 semver, não URL git, porque o pnpm recusa URL git em peer. O consumidor declara os dois (com a URL
-git, como faz para qualquer dependência privada) e `zod` vem junto como dependência normal.
+git, como faz para qualquer dependência privada) **na raiz do workspace e em cada pacote que importa
+este** e `zod` vem junto como dependência normal.
 
 O kairos traz o genos como dependência própria e o bridge dele cria o `ToolRegistry` que a fábrica
 entrega ao laço do genos: há `instanceof` entre as duas pontas, então o processo precisa resolver
@@ -117,14 +118,14 @@ Pontos que mordem:
 
 ## Subpaths
 
-Gerado de `package.json` (`exports`). Os do orquestrador **preservam os nomes** que tinham em
+Gerado de `package.json` (`exports`): 52 subpaths. Os do orquestrador **preservam os nomes** que tinham em
 `@igris/orchestrator`; os de decisões são os de `@igris/decisions` com prefixo `decisoes/`. Fora desta
 lista, qualquer caminho é privado (o `exports` bloqueia import profundo).
 
 | Subpath | Arquivo | Exporta (principais) |
 |---|---|---|
 | `@okds/agent-factory` | `orquestrador/src/index.js` | `criarOrquestrador`; limiares (`limiaresDoConjunto`, `opcoesDeLimiares`), semântica do catálogo (`aquecerCatalogo`, `recalcularCatalogo`, `entregarSemanticaDoCatalogo`), `normalizarDespejo`/`DESPEJO_PADRAO`, `derivarRefino`, `mensagemDeToolDesconhecida`, `AVISO_TETO_DE_ITERACOES` |
-| `@okds/agent-factory/prompt-builder` | `orquestrador/src/prompt-builder.js` | construtor de prompt: `criarConstrutorDePrompt`, `systemVazio`, `removerBlocosDeOperacoes`, `NOMES_PADRAO`, `refDaTool` |
+| `@okds/agent-factory/prompt-builder` | `orquestrador/src/prompt-builder.js` | construtor de prompt: `criarConstrutorDePrompt`, `systemVazio`, `removerBlocosDeOperacoes` (só blocos completos; abertura sem fechamento mantém o texto), `NOMES_PADRAO`, `refDaTool` |
 | `@okds/agent-factory/capacidades` | `orquestrador/src/capacidades.js` | `montarProviders`, `nomeExposto`, `toolEhFixa`, `toolsExpostas`, `tudoPiso` |
 | `@okds/agent-factory/calibracao` | `orquestrador/src/calibracao.js` | `calibrarLimiares`, `PARAMETROS_PADRAO` |
 | `@okds/agent-factory/cache-exemplos` | `orquestrador/src/cache-exemplos.js` | `envolverEmbedderComDisco` |
@@ -133,7 +134,14 @@ lista, qualquer caminho é privado (o `exports` bloqueia import profundo).
 | `@okds/agent-factory/perfis/shadow-loop` | `orquestrador/src/perfis/shadow-loop.js` | `perfilShadowLoop` |
 | `@okds/agent-factory/perfis/agente-llm` | `orquestrador/src/perfis/agente-llm.js` | `perfilAgenteLlm` |
 | `@okds/agent-factory/loop-do-turno` | `orquestrador/src/loop-do-turno.js` | `espacoDoLoop`, `capacidadesDoLoop`, `entregaDoLoop`, `refsAcompanhantes`… |
-| `@okds/agent-factory/decisoes` | `decisoes/src/index.js` | `decidir`, `aplicarGates`, `criarCliente`, `criarClienteDoGateway`, `aquecer`, `entreAspas`… |
+| `@okds/agent-factory/despejo/config` | `orquestrador/src/despejo/config.js` | `normalizarDespejo`, `DESPEJO_PADRAO`, `parametrosDoModelo` |
+| `@okds/agent-factory/despejo/registro-de-uso` | `orquestrador/src/despejo/registro-de-uso.js` | `registrarTurno`, `registrarDescarte`, `estadoDespejoVazio`, `usosDoTurno`, `descartaveis`, `exigeSinalForte` |
+| `@okds/agent-factory/despejo/conta` | `orquestrador/src/despejo/conta.js` | `decidirDespejo`, `horizonte`, `prefixoComum` |
+| `@okds/agent-factory/despejo/despejar` | `orquestrador/src/despejo/despejar.js` | `despejar` |
+| `@okds/agent-factory/despejo/cauda` | `orquestrador/src/despejo/cauda.js` | `caudaParaOProximo`, `herdarCauda`, `renderizarCauda`, `separarCauda`, `nomesDaCauda`, `LEGENDA_CAUDA_PADRAO` |
+| `@okds/agent-factory/despejo/aviso` | `orquestrador/src/despejo/aviso.js` | `avisoDeDescartadas` |
+| `@okds/agent-factory/despejo/costura` | `orquestrador/src/despejo/costura.js` | `fecharTurnoDoDespejo`, `usadasDoTurno`, `caudaDoTurnoComHerdada`, `criarSinalForte`, `protecaoDoDespejo`… |
+| `@okds/agent-factory/decisoes` | `decisoes/src/index.js` | `decidir`, `montarPerguntas` (ambos com `assistente`), `aplicarGates`, `criarCliente`, `criarClienteDoGateway`, `aquecer`, `entreAspas`… |
 | `@okds/agent-factory/decisoes/cliente` | `decisoes/src/cliente.js` | `criarCliente` (OpenRouter; `xTitle`) |
 | `@okds/agent-factory/decisoes/catalogo` | `decisoes/src/catalogo.js` | `montarCriteria`, `descricaoDaTool` |
 | `@okds/agent-factory/decisoes/estado` | `decisoes/src/estado.js` | `montarEstado` |
@@ -142,7 +150,7 @@ lista, qualquer caminho é privado (o `exports` bloqueia import profundo).
 | `@okds/agent-factory/decisoes/loop` | `decisoes/src/loop/index.js` | `rodarLoop` e constantes do loop do Jev |
 | `@okds/agent-factory/decisoes/loop/valores-rotulados` | `decisoes/src/loop/valores-rotulados.js` | `extrairRotulados`, `mesclarRotulados` |
 | `@okds/agent-factory/decisoes/nucleo` | `decisoes/src/nucleo/index.js` | núcleo genérico: `perguntar`, `choice`/`noul`/`score`, `criarProvedorDeCliente` |
-| `@okds/agent-factory/decisoes/perguntas` | `decisoes/src/perguntas.js` | textos e critérios das perguntas |
+| `@okds/agent-factory/decisoes/perguntas` | `decisoes/src/perguntas.js` | textos e critérios das perguntas; `instrucoesNextTool(assistente)` |
 | `@okds/agent-factory/decisoes/treino` | `decisoes/treino/lib/servico.js` | `criarServicoDeTreino`, `ErroDeTreino` |
 | `@okds/agent-factory/decisoes/caso` | `decisoes/treino/lib/caso.js` | `montarCaso`, `triar`, `conferir` |
 | `@okds/agent-factory/decisoes/registro` | `decisoes/treino/lib/registro.js` | registro de casos e estado do treino |
@@ -154,6 +162,11 @@ lista, qualquer caminho é privado (o `exports` bloqueia import profundo).
 | `@okds/agent-factory/decisoes/casos` | `decisoes/treino/lib/casos.js` | `mapaDeFuncoes`, `casoDaInteracao`… |
 | `@okds/agent-factory/decisoes/dominio` | `decisoes/treino/lib/dominio.js` | primitivas de anel e portão |
 | `@okds/agent-factory/decisoes/item-do-registro` | `decisoes/treino/lib/item-do-registro.js` | `itemDoRegistro` |
+| `@okds/agent-factory/decisoes/args` | `decisoes/treino/lib/args.js` | `lerArgs`, `usoDoCabecalho` (CLIs de treino do host) |
+| `@okds/agent-factory/decisoes/conferencia` | `decisoes/treino/lib/conferencia.js` | `conferenciaDoDataDir`, `resumirConferencia`, `ANEIS_CONFERENCIA`… |
+| `@okds/agent-factory/decisoes/conferencia-texto` | `decisoes/treino/lib/conferencia-texto.js` | `formatarConferencia` |
+| `@okds/agent-factory/decisoes/linha-sinal` | `decisoes/treino/lib/linha-sinal.js` | `linhaSinalDoAnel` |
+| `@okds/agent-factory/decisoes/sombra` | `decisoes/treino/lib/sombra.js` | `resumirSombras`, `contarDesligados` |
 | `@okds/agent-factory/decisoes/refinadores` | `decisoes/src/refinadores/index.js` | `refinadoresDoChat`, `PADRAO_PROVIDER`/`TOOL`/`SKILL` |
 | `@okds/agent-factory/decisoes/transporte` | `decisoes/src/transporte.js` | `criarFetchKeepAlive`, `aquecer` |
 | `@okds/agent-factory/apoio/continuidade` | `apoio/src/continuidade.js` | `decidirContinuidade`, `classificarResposta`… |

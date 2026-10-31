@@ -69,7 +69,7 @@ Origem: `/home/user/ariadne-artifact-studio`, `src/fabrica/`, mudanças desde a 
 | `26be46a9` | `c45d15d` | `config.pricingResolver` repassado ao genos. |
 | `9f3fd177` | `fac102d` | `config.provider(ctx)` recebe o ctx do turno. |
 | `1901880d` | `c52b2b4` | Tool de catálogo chamada pelo nome ensina `call_capability` no protocolo nativo (`mensagemDeToolDesconhecida`). |
-| `7d5e76e5` | `af11bb5` | `removerBlocosDeOperacoes`: tira o `<turn_operations>` imitado pelo modelo antes de costurar o bloco no histórico. |
+| `7d5e76e5` | `af11bb5` | `removerBlocosDeOperacoes`: tira o `<turn_operations>` imitado pelo modelo antes de costurar o bloco no histórico (aqui só blocos completos; o Ariadne descartava o resto do texto em bloco aberto). |
 | não registrado no commit | `355b9a3` | `config.genos` é generalização nova, não porte. O Ariadne tem `outputMode` dedicado (`3c7af48e`); se a relação é essa, **(conferir)**. |
 
 Não portados (viram pendência): `fc2457a8` (instruções de chamada do protocolo dentro do catálogo) e
