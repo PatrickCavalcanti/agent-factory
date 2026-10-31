@@ -9,16 +9,17 @@ Legenda de caminhos: `packages/…` é do Igris; `orquestrador/`, `decisoes/`, `
 
 ## 0. Antes de começar
 
-1. **Bloqueio no pacote: subpaths que o Igris precisa e o `exports` ainda não tem.** O `exports` é
-   fechado (sem import profundo), e código que fica no Igris alcança 11 arquivos que não estão lá:
+1. **Subpaths do código que fica no Igris (existem desde a 0.1.0).** O `exports` é fechado (sem
+   import profundo); estes 12 arquivos têm subpath próprio (nome do arquivo = nome do subpath):
 
-   | Subpath novo | Arquivo | Quem usa no Igris |
+   | Subpath | Arquivo | Quem usa no Igris |
    |---|---|---|
    | `@okds/agent-factory/decisoes/args` | `decisoes/treino/lib/args.js` | `treino/conferencia.mjs`, `treino/treinar.mjs`, `test/treino-args.test.js` |
    | `@okds/agent-factory/decisoes/conferencia` | `decisoes/treino/lib/conferencia.js` | `treino/conferencia.mjs`, `test/treino-conferencia.test.js` |
    | `@okds/agent-factory/decisoes/conferencia-texto` | `decisoes/treino/lib/conferencia-texto.js` | idem |
    | `@okds/agent-factory/decisoes/linha-sinal` | `decisoes/treino/lib/linha-sinal.js` | `treino/treinar.mjs` |
    | `@okds/agent-factory/decisoes/sombra` | `decisoes/treino/lib/sombra.js` | `treino/sombra.mjs` |
+   | `@okds/agent-factory/despejo/config` | `orquestrador/src/despejo/config.js` | `scripts/eval/despejo.mjs` (também sai na raiz) |
    | `@okds/agent-factory/despejo/registro-de-uso` | `orquestrador/src/despejo/registro-de-uso.js` | `scripts/eval/despejo.mjs` |
    | `@okds/agent-factory/despejo/conta` | `orquestrador/src/despejo/conta.js` | idem |
    | `@okds/agent-factory/despejo/despejar` | `orquestrador/src/despejo/despejar.js` | idem |
@@ -26,12 +27,9 @@ Legenda de caminhos: `packages/…` é do Igris; `orquestrador/`, `decisoes/`, `
    | `@okds/agent-factory/despejo/aviso` | `orquestrador/src/despejo/aviso.js` | idem |
    | `@okds/agent-factory/despejo/costura` | `orquestrador/src/despejo/costura.js` | idem |
 
-   Os nomes acima são proposta (mesma regra de D4: nome do arquivo = nome do subpath). Resolver antes
-   de taguear (entra em `exports` + `test/contrato.snapshot.json`) ou numa 0.1.1; a tabela da seção 3
-   já usa esses nomes e marca cada linha afetada com **(SUBPATH A CRIAR)**. O restante do que o Igris
-   importa já existe nos subpaths atuais (nomes conferidos contra o código: todos os identificadores
-   importados nas tabelas abaixo existem no módulo de destino, exceto `RAIZ_POWERS_PADRAO`, que saiu
-   de propósito — ver seção 5).
+   O restante do que o Igris importa já existe nos subpaths atuais (nomes conferidos contra o código:
+   todos os identificadores importados nas tabelas abaixo existem no módulo de destino, exceto
+   `RAIZ_POWERS_PADRAO`, que saiu de propósito — ver seção 5).
 2. **Medir a deriva** do Igris desde a origem (comando em [`ORIGEM.md`](./ORIGEM.md)). Qualquer diff
    precisa ser reaplicado aqui antes de ligar.
 3. **Baseline na main do Igris**, antes de abrir a worktree: `node scripts/suite.mjs --baseline`
@@ -186,23 +184,23 @@ caminho relativo; depois, pelo pacote.
 | `packages/decisions/eval/horizonte.mjs` | L13: `../src/nucleo/index.js` → `@okds/agent-factory/decisoes/nucleo` |
 | `packages/decisions/eval/prefetch-args.mjs` | L25: `../src/index.js` → `@okds/agent-factory/decisoes`<br>L27: `../src/perguntas.js` → `@okds/agent-factory/decisoes/perguntas` |
 | `packages/decisions/treino/casos.mjs` | L3: `./lib/extrair.js` → `@okds/agent-factory/decisoes/extrair` |
-| `packages/decisions/treino/conferencia.mjs` | L8: `./lib/conferencia.js` → `@okds/agent-factory/decisoes/conferencia` **(SUBPATH A CRIAR)**<br>L9: `./lib/conferencia-texto.js` → `@okds/agent-factory/decisoes/conferencia-texto` **(SUBPATH A CRIAR)**<br>L10: `./lib/args.js` → `@okds/agent-factory/decisoes/args` **(SUBPATH A CRIAR)** |
-| `packages/decisions/treino/sombra.mjs` | L7: `./lib/casos.js` → `@okds/agent-factory/decisoes/casos`<br>L8: `./lib/sombra.js` → `@okds/agent-factory/decisoes/sombra` **(SUBPATH A CRIAR)** |
-| `packages/decisions/treino/treinar.mjs` | L11: `./lib/linha-sinal.js` → `@okds/agent-factory/decisoes/linha-sinal` **(SUBPATH A CRIAR)**<br>L12: `./lib/args.js` → `@okds/agent-factory/decisoes/args` **(SUBPATH A CRIAR)** |
+| `packages/decisions/treino/conferencia.mjs` | L8: `./lib/conferencia.js` → `@okds/agent-factory/decisoes/conferencia`<br>L9: `./lib/conferencia-texto.js` → `@okds/agent-factory/decisoes/conferencia-texto`<br>L10: `./lib/args.js` → `@okds/agent-factory/decisoes/args` |
+| `packages/decisions/treino/sombra.mjs` | L7: `./lib/casos.js` → `@okds/agent-factory/decisoes/casos`<br>L8: `./lib/sombra.js` → `@okds/agent-factory/decisoes/sombra` |
+| `packages/decisions/treino/treinar.mjs` | L11: `./lib/linha-sinal.js` → `@okds/agent-factory/decisoes/linha-sinal`<br>L12: `./lib/args.js` → `@okds/agent-factory/decisoes/args` |
 | `packages/orchestrator/bancada/cenarios/decisor.mjs` | L24: `../../src/index.js` → `@okds/agent-factory`<br>L25: `../../../decisions/src/refinadores/index.js` → `@okds/agent-factory/decisoes/refinadores` |
 | `packages/orchestrator/bancada/cenarios/loop-ampliada.mjs` | L32: `../../../decisions/src/loop/index.js` → `@okds/agent-factory/decisoes/loop`<br>L34: `../../../decisions/src/perguntas.js` → `@okds/agent-factory/decisoes/perguntas` |
 | `packages/orchestrator/bancada/cenarios/loop-replay.mjs` | L19: `../../../decisions/src/loop/index.js` → `@okds/agent-factory/decisoes/loop` |
 | `packages/orchestrator/bancada/cenarios/loop.mjs` | L30: `../../../decisions/src/loop/index.js` → `@okds/agent-factory/decisoes/loop` |
 | `packages/orchestrator/bancada/cenarios/memoria.mjs` | L15: `../../src/index.js` → `@okds/agent-factory` |
 | `packages/orchestrator/bancada/rodar.mjs` | L2: `../src/index.js` → `@okds/agent-factory` |
-| `scripts/eval/despejo.mjs` | L22: `../../packages/orchestrator/src/despejo/config.js` → `@okds/agent-factory` (`normalizarDespejo`, `DESPEJO_PADRAO` são reexportados na raiz)<br>L23: `../../packages/orchestrator/src/despejo/registro-de-uso.js` → `@okds/agent-factory/despejo/registro-de-uso` **(SUBPATH A CRIAR)**<br>L24: `../../packages/orchestrator/src/despejo/conta.js` → `@okds/agent-factory/despejo/conta` **(SUBPATH A CRIAR)**<br>L25: `../../packages/orchestrator/src/despejo/despejar.js` → `@okds/agent-factory/despejo/despejar` **(SUBPATH A CRIAR)**<br>L26: `../../packages/orchestrator/src/despejo/cauda.js` → `@okds/agent-factory/despejo/cauda` **(SUBPATH A CRIAR)**<br>L27: `../../packages/orchestrator/src/despejo/aviso.js` → `@okds/agent-factory/despejo/aviso` **(SUBPATH A CRIAR)**<br>L28: `../../packages/orchestrator/src/despejo/costura.js` → `@okds/agent-factory/despejo/costura` **(SUBPATH A CRIAR)**<br>L29: `../../packages/orchestrator/src/loop-do-turno.js` → `@okds/agent-factory/loop-do-turno`<br>L30: `../../packages/orchestrator/src/capacidades.js` → `@okds/agent-factory/capacidades` |
+| `scripts/eval/despejo.mjs` | L22: `../../packages/orchestrator/src/despejo/config.js` → `@okds/agent-factory` (`normalizarDespejo`, `DESPEJO_PADRAO` são reexportados na raiz)<br>L23: `../../packages/orchestrator/src/despejo/registro-de-uso.js` → `@okds/agent-factory/despejo/registro-de-uso`<br>L24: `../../packages/orchestrator/src/despejo/conta.js` → `@okds/agent-factory/despejo/conta`<br>L25: `../../packages/orchestrator/src/despejo/despejar.js` → `@okds/agent-factory/despejo/despejar`<br>L26: `../../packages/orchestrator/src/despejo/cauda.js` → `@okds/agent-factory/despejo/cauda`<br>L27: `../../packages/orchestrator/src/despejo/aviso.js` → `@okds/agent-factory/despejo/aviso`<br>L28: `../../packages/orchestrator/src/despejo/costura.js` → `@okds/agent-factory/despejo/costura`<br>L29: `../../packages/orchestrator/src/loop-do-turno.js` → `@okds/agent-factory/loop-do-turno`<br>L30: `../../packages/orchestrator/src/capacidades.js` → `@okds/agent-factory/capacidades` |
 
 ### 3.4 Testes que ficam no Igris e mudam de import (3 arquivos)
 
 | Arquivo | Linhas: especificador atual → novo |
 |---|---|
-| `packages/decisions/test/treino-args.test.js` | L8: `../treino/lib/args.js` → `@okds/agent-factory/decisoes/args` **(SUBPATH A CRIAR)** |
-| `packages/decisions/test/treino-conferencia.test.js` | L8: `../treino/lib/conferencia.js` → `@okds/agent-factory/decisoes/conferencia` **(SUBPATH A CRIAR)**<br>L9: `../treino/lib/conferencia-texto.js` → `@okds/agent-factory/decisoes/conferencia-texto` **(SUBPATH A CRIAR)**<br>L10: `../treino/lib/registro.js` → `@okds/agent-factory/decisoes/registro`<br>L11: `../treino/lib/versoes.js` → `@okds/agent-factory/decisoes/versoes`<br>L12: `../treino/lib/caso.js` → `@okds/agent-factory/decisoes/caso`<br>L355: `../treino/lib/registro.js` → `@okds/agent-factory/decisoes/registro` |
+| `packages/decisions/test/treino-args.test.js` | L8: `../treino/lib/args.js` → `@okds/agent-factory/decisoes/args` |
+| `packages/decisions/test/treino-conferencia.test.js` | L8: `../treino/lib/conferencia.js` → `@okds/agent-factory/decisoes/conferencia`<br>L9: `../treino/lib/conferencia-texto.js` → `@okds/agent-factory/decisoes/conferencia-texto`<br>L10: `../treino/lib/registro.js` → `@okds/agent-factory/decisoes/registro`<br>L11: `../treino/lib/versoes.js` → `@okds/agent-factory/decisoes/versoes`<br>L12: `../treino/lib/caso.js` → `@okds/agent-factory/decisoes/caso`<br>L355: `../treino/lib/registro.js` → `@okds/agent-factory/decisoes/registro` |
 | `packages/orchestrator/test/despejo-equivalencia-script.test.js` | L4: `../src/index.js` → `@okds/agent-factory`<br>L5: `../src/prompt-builder.js` → `@okds/agent-factory/prompt-builder`<br>L6: `../src/protocolo/envelope.js` → `@okds/agent-factory/protocolo` (`estrategiaEnvelope` é reexportado)<br>L7: `../src/despejo/config.js` → `@okds/agent-factory` (`normalizarDespejo`, `DESPEJO_PADRAO` são reexportados na raiz)<br>L8: `../src/capacidades.js` → `@okds/agent-factory/capacidades` |
 
 ## 4. Parâmetros novos: o valor que o Igris passa, e onde
@@ -329,7 +327,7 @@ As 7 peças de apoio são só troca de import (seção 3).
 | `packages/decisions/treino/casos.mjs` L3, L7 | idem: `extrairCasos({ dataDir: args.data, raizPowers: args.powers \|\| RAIZ_POWERS })` com `RAIZ_POWERS = resolve(fileURLToPath(new URL('../../powers/src/powers', import.meta.url)))` (igual ao que `sombra.mjs` L15 já faz). |
 | `packages/api/test/routes/decisoes.test.js` L107, L186, L217 | `criarServicoDeTreino({ obterPiso, obterDataDir, obterEmbedder })` sem `extrair` usa o `extrairCasos` real, que agora lança sem `raizPowers`. Passar `raizPowers` (ou `extrair` de teste) **(conferir** quais chegam à extração)**. |
 | `packages/decisions/test/perguntas-agnosticas.test.js` L26 | `PERGUNTAS_PATH` deixa de existir como arquivo local: `fileURLToPath(import.meta.resolve('@okds/agent-factory/decisoes/perguntas'))`. `POWERS_DIR` (L27) fica como está (o teste continua em `packages/decisions/test`). |
-| `packages/orchestrator/test/despejo-equivalencia-script.test.js` | só imports (3.4) + os 6 subpaths novos de `scripts/eval/despejo.mjs` (seção 0). |
+| `packages/orchestrator/test/despejo-equivalencia-script.test.js` | só imports (3.4) + os subpaths `despejo/*` de `scripts/eval/despejo.mjs` (seção 0). |
 
 ## 6. Testes que ficam no Igris (D9 + F1)
 
@@ -384,8 +382,8 @@ pressa. Como importam:
   Eles continuam alcançando o resto do Igris por caminho relativo (`../../powers/src/fabrica/capacidade.js`,
   `../../../executor/src/orchestration/fabrica/{base,legendas}.js`, `../../../memory/src/fonte/index.js`,
   `../../../executor-registry/src/index.js`) — nada disso muda.
-- `treino/*.mjs`: `./lib/<x>.js` vira o subpath `decisoes/<x>` (tabela 3.3). Os que dependem dos 5
-  subpaths novos (seção 0): `conferencia.mjs`, `sombra.mjs`, `treinar.mjs`. `casos.mjs` só precisa do
+- `treino/*.mjs`: `./lib/<x>.js` vira o subpath `decisoes/<x>` (tabela 3.3). Os que dependem dos
+  subpaths `decisoes/{args,conferencia,conferencia-texto,linha-sinal,sombra}` (seção 0): `conferencia.mjs`, `sombra.mjs`, `treinar.mjs`. `casos.mjs` só precisa do
   ajuste de `raizPowers` (seção 5).
 - `usoDoCabecalho(import.meta.url)` (de `treino/lib/args.js`) lê o cabeçalho do próprio `.mjs` que o chama:
   continua funcionando com a lib em `node_modules`, porque o argumento é a URL da CLI.

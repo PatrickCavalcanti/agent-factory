@@ -26,6 +26,8 @@ Primeira versão: a fábrica do Igris como biblioteca própria.
 - `config.genos`: opções extras para o `createOrchestrator` do genos; as da fábrica vencem (`355b9a3`).
 - `test/contrato.test.js` (congela os 40 subpaths e os nomes exportados) e `test/pureza.test.js`
   (falha com `@igris/`, `IGRIS_` em código ou import relativo para fora do pacote) (`116b2c6`).
+- Subpaths para o código que fica no Igris: `./decisoes/{args,conferencia,conferencia-texto,linha-sinal,sombra}`
+  e `./despejo/{config,registro-de-uso,conta,despejar,cauda,aviso,costura}`.
 - `README.md`, `ORIGEM.md`, `MIGRACAO-IGRIS.md`, `docs/pendencias/2026-10-31-criacao.md`.
 
 ### Alterado

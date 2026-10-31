@@ -74,6 +74,48 @@
     "refsAcompanhantes",
     "refsDaIntencao"
   ],
+  "./despejo/config": [
+    "DESPEJO_PADRAO",
+    "normalizarDespejo",
+    "parametrosDoModelo"
+  ],
+  "./despejo/registro-de-uso": [
+    "descartaveis",
+    "estadoDespejoVazio",
+    "exigeSinalForte",
+    "registrarDescarte",
+    "registrarTurno",
+    "usosDoTurno"
+  ],
+  "./despejo/conta": [
+    "decidirDespejo",
+    "horizonte",
+    "prefixoComum"
+  ],
+  "./despejo/despejar": [
+    "despejar"
+  ],
+  "./despejo/cauda": [
+    "LEGENDA_CAUDA_PADRAO",
+    "caudaParaOProximo",
+    "herdarCauda",
+    "nomesDaCauda",
+    "renderizarCauda",
+    "separarCauda"
+  ],
+  "./despejo/aviso": [
+    "avisoDeDescartadas"
+  ],
+  "./despejo/costura": [
+    "caudaDoTurnoComHerdada",
+    "criarSinalForte",
+    "ehContinuacaoCurta",
+    "fecharTurnoDoDespejo",
+    "protecaoDoDespejo",
+    "refEhFixa",
+    "sobeJuntoNaEntrada",
+    "usadasDoTurno"
+  ],
   "./decisoes": [
     "CORTES_PADRAO",
     "ESTRATEGIAS_PADRAO",
@@ -312,6 +354,28 @@
     "formatoDoDominio",
     "itemDoRegistro",
     "limitarFracos"
+  ],
+  "./decisoes/args": [
+    "lerArgs",
+    "usoDoCabecalho"
+  ],
+  "./decisoes/conferencia": [
+    "ANEIS_CONFERENCIA",
+    "DIAS_PADRAO_CONFERENCIA",
+    "comparabilidadeDasJanelas",
+    "conferenciaDoDataDir",
+    "desdePadrao",
+    "resumirConferencia"
+  ],
+  "./decisoes/conferencia-texto": [
+    "formatarConferencia"
+  ],
+  "./decisoes/linha-sinal": [
+    "linhaSinalDoAnel"
+  ],
+  "./decisoes/sombra": [
+    "contarDesligados",
+    "resumirSombras"
   ],
   "./decisoes/refinadores": [
     "PADRAO_PROVIDER",
