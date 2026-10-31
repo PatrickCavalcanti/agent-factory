@@ -1,5 +1,7 @@
 # Como declarar uma capacidade
 
+> **Copiado de `igris@430d2c9`; o texto ainda descreve o Igris como host de referência.** Links para `docs/`, `packages/executor` e `packages/powers` apontam para o GitHub do Igris no sha de origem; ver [`ORIGEM.md`](../ORIGEM.md).
+
 > Companheiro de [`REGRAS.md`](./REGRAS.md) (as 8 regras de quem monta um
 > orquestrador) e de [`ARCHITECTURE.md`](./ARCHITECTURE.md) (as quatro peças).
 > Este documento é sobre **uma capacidade**: o que cada campo faz, qual decisão

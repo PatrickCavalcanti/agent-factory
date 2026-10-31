@@ -1,10 +1,12 @@
 # ARCHITECTURE — @igris/orchestrator
 
-> Ver [`../../docs/ok-playbook/patterns/code-design.md §9`](../../docs/ok-playbook/patterns/code-design.md) para a
+> **Copiado de `igris@430d2c9`; o texto ainda descreve o Igris como host de referência.** Links para `docs/`, `packages/executor` e `packages/powers` apontam para o GitHub do Igris no sha de origem; ver [`ORIGEM.md`](../ORIGEM.md).
+
+> Ver [`../../docs/ok-playbook/patterns/code-design.md §9`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/ok-playbook/patterns/code-design.md) para a
 > regra completa de `ARCHITECTURE.md` por unidade modular. Spec de origem:
-> [`docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md`](../../docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md).
+> [`docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md).
 > Pendências da execução (leia antes de mexer nesta área):
-> [`docs/pendencias/2026-09-10-fabrica-de-orquestradores.md`](../../docs/pendencias/2026-09-10-fabrica-de-orquestradores.md).
+> [`docs/pendencias/2026-09-10-fabrica-de-orquestradores.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/pendencias/2026-09-10-fabrica-de-orquestradores.md).
 >
 > Este doc nasce com o pacote e evolui junto com o código. Atualize-o no mesmo commit que mudar a
 > estrutura interna.
@@ -140,7 +142,7 @@ nada e os dois perfis o desligam (`prefixarTools: false`) — motivo registrado 
 `async-shadows/handlers/delivery.js` (que compara por igualdade estrita contra o nome cru) zerava a
 contagem de notificação em silêncio.
 
-### `FonteDeclarada` e `Selecao` (`capacidades.js`, spec [`2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md`](../../docs/superpowers/specs/2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md))
+### `FonteDeclarada` e `Selecao` (`capacidades.js`, spec [`2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md))
 
 `CapacidadeDeclarada` ganhou um campo opcional `fonte: FonteDeclarada` — hoje só o poder `memoria`
 declara (`packages/powers/src/powers/memoria/index.js#fonte`), copiado para a capacidade pelo
@@ -191,7 +193,7 @@ Ver §6 para o porquê de cada campo e a divisão invariante/forma.
   fontes, historico, estado, schema, runId, runStore }
 ```
 
-`fontes` (spec [`2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md`](../../docs/superpowers/specs/2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md)) —
+`fontes` (spec [`2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md)) —
 uma entrada por capacidade que declarou `fonte.selecionar`: `{ id, ms, degradado, incluidos,
 candidatos, carregar, semear, enriqueceu }`, `[]` quando nenhuma capacidade do turno tem `fonte`.
 Mesmo valor entregue a `config.aoMontar`. Detalhe de onde entra na sequência do turno: §5,
@@ -259,7 +261,7 @@ idempotente e fecha exatamente o buraco que motivou a correção.
 
 ## 5. Costuras para o porte do executor
 
-**Esta é a seção que [`docs/project-architecture/prompt-assembly-map.md`](../../docs/project-architecture/prompt-assembly-map.md)
+**Esta é a seção que [`docs/project-architecture/prompt-assembly-map.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/prompt-assembly-map.md)
 referencia.** Ela existe para quem for escrever a próxima spec (a migração do `motor:'igris'`) saber,
 sem reler todo o histórico de execução, o que já está pronto e o que só está desenhado.
 
@@ -342,17 +344,17 @@ reaproveitável de fato, não só em teoria.
 
 O `motor:'igris'` (executor de chat) ganhou um terceiro consumidor da fábrica, atrás de
 `IGRIS_CHAT_FABRICA=1`, com a V1 intocada ao lado. Spec de origem:
-[`docs/superpowers/specs/done/2026-09-18-orquestrador-de-chat-sobre-a-fabrica-design.md`](../../docs/superpowers/specs/done/2026-09-18-orquestrador-de-chat-sobre-a-fabrica-design.md).
-Código: [`packages/executor/src/orchestration/fabrica/`](../executor/src/orchestration/fabrica/)
+[`docs/superpowers/specs/done/2026-09-18-orquestrador-de-chat-sobre-a-fabrica-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/done/2026-09-18-orquestrador-de-chat-sobre-a-fabrica-design.md).
+Código: [`packages/executor/src/orchestration/fabrica/`](https://github.com/PatrickCavalcanti/igris/tree/430d2c9/packages/executor/src/orchestration/fabrica/)
 (`flag.js`, `sessao.js`, `perfil.js`, `base.js`, `contribuicoes.js`, `legendas.js`, `turno.js`) +
-o adapter [`packages/powers/src/fabrica/capacidade.js`](../powers/src/fabrica/capacidade.js). Cada
+o adapter [`packages/powers/src/fabrica/capacidade.js`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/packages/powers/src/fabrica/capacidade.js). Cada
 power migrado vira uma `CapacidadeDeclarada`; hoje só `tarefas` e `google-calendar` mais o piso
 (`alwaysLoaded`) — os outros 24 não existem no caminho novo até a lista de
 `IGRIS_CHAT_FABRICA_POWERS` virar `*`.
 
 Escopo deliberadamente reduzido nesta primeira entrega — a tabela lista o que a V1 faz hoje e o
 caminho novo ainda não (detalhe de cada linha em
-[`docs/pendencias/2026-09-19-orquestrador-de-chat-sobre-a-fabrica.md`](../../docs/pendencias/2026-09-19-orquestrador-de-chat-sobre-a-fabrica.md)):
+[`docs/pendencias/2026-09-19-orquestrador-de-chat-sobre-a-fabrica.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/pendencias/2026-09-19-orquestrador-de-chat-sobre-a-fabrica.md)):
 
 | Já faz na V1 | Caminho novo (`turno.js`) |
 |---|---|
@@ -371,20 +373,20 @@ caminho novo ainda não (detalhe de cada linha em
 **Atualização 2026-09-19 (mesmo dia, spec seguinte): o decisor do chat existe, atrás de flag.** A
 linha "Jev decidindo hidratação/prefetch/descoberta" desta tabela, na versão anterior deste
 documento, ficou desatualizada no mesmo dia em que foi escrita — spec
-[`2026-09-19-jev-pelo-gateway-e-decisor-da-fabrica-design.md`](../../docs/superpowers/specs/done/2026-09-19-jev-pelo-gateway-e-decisor-da-fabrica-design.md)
+[`2026-09-19-jev-pelo-gateway-e-decisor-da-fabrica-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/done/2026-09-19-jev-pelo-gateway-e-decisor-da-fabrica-design.md)
 acrescentou o gancho `aoDescobrir` (§3, tabela de contratos acima) e ligou o Jev como decisor
 OPCIONAL da descoberta — atrás de `IGRIS_CHAT_FABRICA_DECISOR` (default ligado;
 `packages/executor/src/orchestration/fabrica/flag.js`), independente de `IGRIS_CHAT_FABRICA`
 (o caminho novo inteiro) e de `IGRIS_DECISOES` (V1). O que o Jev decide hoje é só a linha que
 sobra na tabela acima: quais capacidades candidatas entram e quais funções sem manual vêm com
 manual neste turno (J4) — nunca chama tool, nunca tira nada do que o kairos já decidiu (J0). Detalhe
-do gancho: [`docs/project-architecture/prompt-assembly-map.md §3.2`](../../docs/project-architecture/prompt-assembly-map.md).
+do gancho: [`docs/project-architecture/prompt-assembly-map.md §3.2`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/prompt-assembly-map.md).
 Detalhe do decisor em si (perguntas, cortes, tetos, artefato): spec §3.2, J4–J7, e
-[`docs/project-architecture/decisions.md §7`](../../docs/project-architecture/decisions.md).
+[`docs/project-architecture/decisions.md §7`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/decisions.md).
 
 **Atualização 2026-09-20 (spec seguinte da mesma série): as fontes entram no turno, antes do
 `prepareTurn`.** Spec
-[`2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md`](../../docs/superpowers/specs/2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md)
+[`2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/2026-09-20-contrato-de-fonte-memoria-e-habilidades-design.md)
 corrige parcialmente a linha "Tools que não são de power (memória, skills, `load_bundle`)" da
 tabela acima: o poder `habilidades` (novo, `packages/powers/src/powers/habilidades/`) É uma
 capacidade comum no caminho novo — `hab_carregar` e as demais funções existem como qualquer tool
@@ -414,16 +416,16 @@ derruba o turno):
    do prazo; fire-and-forget, sem `await` no caminho da resposta.
 
 Detalhe completo da sequência, com a mesma numeração do fluxo de referência (passos 3 e 4):
-[`docs/project-architecture/prompt-assembly-map.md §3.3`](../../docs/project-architecture/prompt-assembly-map.md)
-e [`docs/project-architecture/diagramas/fluxo-do-turno-fabrica.md`](../../docs/project-architecture/diagramas/fluxo-do-turno-fabrica.md).
+[`docs/project-architecture/prompt-assembly-map.md §3.3`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/prompt-assembly-map.md)
+e [`docs/project-architecture/diagramas/fluxo-do-turno-fabrica.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/diagramas/fluxo-do-turno-fabrica.md).
 
 **Atualização 2026-09-20 (spec seguinte da mesma série: decisor por anel — refinadores do
 kairos, kairos 0.833). O gancho `aoDescobrir` (J3, bloco acima) e o segundo `bridge.prepareTurn`
 que ele disparava saíram; o refino agora roda DENTRO do próprio `discover()` do kairos, um
 `RingRefiner` por anel — ver `config.refinadores`/`config.refino` na tabela de §3 e o detalhe
 completo em
-[`docs/project-architecture/prompt-assembly-map.md §3.2`](../../docs/project-architecture/prompt-assembly-map.md)
-e [`docs/project-architecture/decisions.md §7`](../../docs/project-architecture/decisions.md).
+[`docs/project-architecture/prompt-assembly-map.md §3.2`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/prompt-assembly-map.md)
+e [`docs/project-architecture/decisions.md §7`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/decisions.md).
 Três mudanças na sequência de `executarTurno`:
 
 1. **Ondas dentro do `discover`, não mais um gancho fora dele.** `provider`/`skill`/`source`/
@@ -471,8 +473,8 @@ que lhe entrega os refinadores do Jev de `refinadores.js`);
 `IGRIS_CHAT_FABRICA_DECISOR=0` desliga **os dois** decisores. O parágrafo anterior ("sem cliente do gateway… `refino` sai `null`")
 descreve o caminho só com o Jev: com o local, `config.refinadores` também é registrado sem cliente do Jev quando há embedder
 (`comRefinadores` em `turno.js`). Contrato, composição, treino e configuração:
-[`docs/project-architecture/decisions.md §7.3`](../../docs/project-architecture/decisions.md) e a seção "`src/local/` e `treino/`" de
-[`packages/decisions/ARCHITECTURE.md`](../decisions/ARCHITECTURE.md).
+[`docs/project-architecture/decisions.md §7.3`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/project-architecture/decisions.md) e a seção "`src/local/` e `treino/`" de
+[`packages/decisions/ARCHITECTURE.md`](../decisoes/ARCHITECTURE.md).
 
 ## 6. Por que o protocolo é fechado no genos
 
@@ -498,7 +500,7 @@ ESCAPADA seguida de uma aspa CRUA na fronteira de fechamento — e essa fronteir
 modelos reais no mesmo caractere**: `openai/gpt-5.6-luna` (08/09) e `inception/mercury-2.5` (10/09)
 os dois omitiram a aspa crua na mesma posição, um deles degenerando em 438k caracteres de whitespace
 antes de o teto de tokens cortar (ver
-[`docs/pendencias/2026-09-10-envelope-args-dupla-codificacao.md`](../../docs/pendencias/2026-09-10-envelope-args-dupla-codificacao.md)).
+[`docs/pendencias/2026-09-10-envelope-args-dupla-codificacao.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/pendencias/2026-09-10-envelope-args-dupla-codificacao.md)).
 Não é peculiaridade de um modelo — é o preço estrutural de codificar JSON dentro de uma string JSON,
 pago por qualquer modelo que emita muito payload em modo escape.
 
@@ -526,7 +528,7 @@ ordena antes de qualquer minúscula (97+), `_fala` fica primeiro mesmo sob seria
 ## 7. O que está aberto
 
 A lista completa, com contexto e ponteiros, é
-[`docs/pendencias/2026-09-10-fabrica-de-orquestradores.md`](../../docs/pendencias/2026-09-10-fabrica-de-orquestradores.md)
+[`docs/pendencias/2026-09-10-fabrica-de-orquestradores.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/pendencias/2026-09-10-fabrica-de-orquestradores.md)
 (~30 entradas) — não repetida aqui. O que muda decisão para quem for **usar** ou **estender** o
 pacote:
 
@@ -561,7 +563,21 @@ pacote:
   registrados; a tabela de pendências foi atualizada retroativamente no commit `30e08d03`, logo depois de este doc ser escrito porque documenta o histórico
   da execução, não o estado atual — este `ARCHITECTURE.md` é a fonte do estado atual.
 
-## 8. Extração futura
+## 8. Extração (feita em 2026-10-31)
+
+> **Estado:** a extração foi feita — este pacote é `@okds/agent-factory` 0.1.0, cópia de `igris@430d2c9`
+> (ver [`../ORIGEM.md`](../ORIGEM.md)); a ligação do Igris é [`../MIGRACAO-IGRIS.md`](../MIGRACAO-IGRIS.md).
+> O texto abaixo é o da época da cópia, com cada ponto marcado.
+>
+> - **Resolvido:** `nomeExposto` delega a `exposedName` do kairos (`209fe07`); nome do schema do
+>   envelope parametrizável (`protocoloOpts.prefixoDoEnvelope`, `a7353d3`); identidade do Igris fora de
+>   `decisoes/` (`2c7d258`); peças puras do host em `apoio/` (`8ea5198`); remendos genéricos do Ariadne
+>   portados (`c45d15d`, `fac102d`, `c52b2b4`, `af11bb5`); kairos e genos como peers.
+> - **Pendente:** terceiro consumidor para provar a fronteira (o Ariadne, depois); costuras "desenhadas,
+>   não construídas"; `createGenosProviderForTier` segue em `@igris/shadows`; vocabulário "power" em nomes
+>   públicos; `makeRef` do kairos no lugar do template de ref; campos do host no schema do envelope
+>   (`_fala`, `layout`, `_intencao`); dois remendos do Ariadne não portados. Lista completa:
+>   [`../docs/pendencias/2026-10-31-criacao.md`](../docs/pendencias/2026-10-31-criacao.md).
 
 O pacote nasceu para virar biblioteca própria depois de estabilizar (spec §2: "Spec única, tudo
 dentro do Igris. Extração para pacotes próprios depois de estabilizar"). O candidato mais claro é
@@ -569,24 +585,24 @@ dentro do Igris. Extração para pacotes próprios depois de estabilizar"). O ca
 próprio cabeçalho do arquivo como "o candidato natural a virar pacote próprio". Para o pacote inteiro
 (`@igris/orchestrator`) sair do monorepo, falta:
 
-- **Provar a fronteira do §2 sob um terceiro consumidor.** Hoje ela é inferida de dois perfis que
+- **PENDENTE — Provar a fronteira do §2 sob um terceiro consumidor.** Hoje ela é inferida de dois perfis que
   nasceram do mesmo levantamento (`in-process.js`); um consumidor com formato de budget ou
   cancelamento diferente testaria se `decorarTool` + os três callbacks realmente bastam, ou se falta
   um quarto gancho.
-- **Fechar as costuras "desenhadas, não construídas" do §5** com pelo menos um consumidor real —
+- **PENDENTE — Fechar as costuras "desenhadas, não construídas" do §5** com pelo menos um consumidor real —
   código sem consumidor apodrece (o precedente citado na spec é a variante `headless` do schema,
   que ficou anos parada até esta entrega lhe dar o primeiro chamador).
-- **Decidir o destino de `nomeExposto`** (`capacidades.js`) — hoje é uma reimplementação da fórmula
+- **RESOLVIDO (`209fe07`) — Decidir o destino de `nomeExposto`** (`capacidades.js`) — hoje é uma reimplementação da fórmula
   do Kairos (`${providerId}_${key}`), não um import, porque `@okds/kairos/core/names` não expõe
   `exposedName` publicamente. Enquanto a fábrica mora no monorepo isso é uma pendência registrada;
   fora dele, vira uma dependência implícita de uma versão específica do Kairos que precisaria de
   contrato explícito (subpath público, ou vendoring da fórmula com teste de trava — já existe hoje).
-- **Resolver a exportação aditiva que vazou para `@igris/shadows`** — `createGenosProviderForTier` e
+- **PENDENTE (fica no Igris, D7) — Resolver a exportação aditiva que vazou para `@igris/shadows`** — `createGenosProviderForTier` e
   a contabilidade de tokens foram exportados de `@igris/shadows` porque `motor-llm.js` (em
   `packages/powers`) precisava de um provider compatível com o genos e o único código que traduz
   `providerTier` para isso mora lá. Quando `@igris/orchestrator` for extraído, essa superfície
   provavelmente deveria migrar para perto dele (o adapter de provider é mais próximo da fábrica do
   que do módulo de shadows) — decisão adiada, registrada na pendência `shadows (superfície)`.
-- **Genos e Kairos continuam onde estão** (spec §2: "Ficam onde estão. Não são tocados nesta
+- **FEITO — Genos e Kairos continuam onde estão** (spec §2: "Ficam onde estão. Não são tocados nesta
   entrega") — a extração do orchestrator não implica extrair as duas dependências junto; ele
   continuaria consumindo-as como pacotes externos, exatamente como consome hoje.

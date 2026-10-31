@@ -1,5 +1,7 @@
 # Regras de criação de um orquestrador
 
+> **Copiado de `igris@430d2c9`; o texto ainda descreve o Igris como host de referência.** Links para `docs/`, `packages/executor` e `packages/powers` apontam para o GitHub do Igris no sha de origem; ver [`ORIGEM.md`](../ORIGEM.md).
+
 Quem monta um orquestrador com esta fábrica segue estas regras. Quatro delas a
 fábrica cobra sozinha (recusa montar); uma quinta é garantida por default
 automático do motor, sem recusa nenhuma; as outras dependem de você.
