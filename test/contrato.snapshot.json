@@ -1,0 +1,367 @@
+{
+  ".": [
+    "AVISO_TETO_DE_ITERACOES",
+    "DESPEJO_PADRAO",
+    "aquecerCatalogo",
+    "criarOrquestrador",
+    "derivarRefino",
+    "entregarSemanticaDoCatalogo",
+    "limiaresDoConjunto",
+    "mensagemDeToolDesconhecida",
+    "normalizarDespejo",
+    "opcoesDeLimiares",
+    "opcoesDeSemantica",
+    "recalcularCatalogo",
+    "registrarCapacidadesNoManager"
+  ],
+  "./prompt-builder": [
+    "NOMES_PADRAO",
+    "classificar",
+    "criarConstrutorDePrompt",
+    "providerDaRef",
+    "refDaTool",
+    "removerBlocosDeOperacoes",
+    "systemVazio",
+    "tag"
+  ],
+  "./capacidades": [
+    "montarProviders",
+    "nomeExposto",
+    "sinonimosCrus",
+    "toolEhFixa",
+    "toolsExpostas",
+    "tudoPiso"
+  ],
+  "./calibracao": [
+    "MIN_PROVIDERS_PARA_Z",
+    "PARAMETROS_PADRAO",
+    "calibrarLimiares",
+    "exemplosDasCapacidades",
+    "percentil"
+  ],
+  "./cache-exemplos": [
+    "envolverEmbedderComDisco"
+  ],
+  "./protocolo": [
+    "AVISO_PERTO_DO_TETO",
+    "estrategiaEnvelope",
+    "estrategiaFence",
+    "estrategiaNativo",
+    "resolverProtocolo"
+  ],
+  "./protocolo/envelope-schema": [
+    "SCHEMA_COMPLETA",
+    "SCHEMA_COMPLETA_CONTRIBUICOES",
+    "SCHEMA_HEADLESS",
+    "resolveEnvelopeSchema",
+    "schemasDoEnvelope"
+  ],
+  "./perfis/shadow-loop": [
+    "FORMA_HEADLESS",
+    "perfilShadowLoop"
+  ],
+  "./perfis/agente-llm": [
+    "perfilAgenteLlm"
+  ],
+  "./loop-do-turno": [
+    "SCORES_TOOL_DO_LOOP",
+    "TETO_ACOMPANHA_POR_PODER",
+    "TETO_VIEW_AUTO_POR_PODER",
+    "capacidadesDoLoop",
+    "entregaDoLoop",
+    "espacoDoLoop",
+    "falhaDoResultado",
+    "refsAcompanhantes",
+    "refsDaIntencao"
+  ],
+  "./decisoes": [
+    "CORTES_PADRAO",
+    "ESTRATEGIAS_PADRAO",
+    "RESPOND",
+    "TETO_PERGUNTAS",
+    "TETO_TARDIO_MS",
+    "aplicarEstrategiasDeCandidatos",
+    "aplicarGates",
+    "aquecer",
+    "aquecerDecisao",
+    "criarCliente",
+    "criarClienteDoGateway",
+    "criarFetchKeepAlive",
+    "decidir",
+    "entreAspas",
+    "montarCriteria",
+    "montarEstado",
+    "montarPerguntas"
+  ],
+  "./decisoes/cliente": [
+    "criarCliente"
+  ],
+  "./decisoes/catalogo": [
+    "DESC_RESPOND",
+    "RESPOND",
+    "TETO_OPCOES",
+    "descricaoDaTool",
+    "montarCriteria"
+  ],
+  "./decisoes/estado": [
+    "montarEstado"
+  ],
+  "./decisoes/gates": [
+    "CORTES_PADRAO",
+    "aplicarGates"
+  ],
+  "./decisoes/local": [
+    "CORTES_FIXOS",
+    "FUNCAO_TRAZ_PADRAO",
+    "MODOS",
+    "PARAMETROS_CORTES",
+    "REGRA_DO_INDICE",
+    "TETOS_FULL",
+    "aplicarRoubadosMantidos",
+    "cabecaFinita",
+    "calibrarCortes",
+    "capacidadeDoRef",
+    "carregarCabeca",
+    "centrar",
+    "consultaCentrada",
+    "criarRefinadorLocal",
+    "estadoDoAnel",
+    "exportarRetrato",
+    "hashDosNos",
+    "indiceDeFuncoesDoProvider",
+    "indiceDoCatalogo",
+    "indiceDoRefino",
+    "media",
+    "montarIndice",
+    "normalizar",
+    "normalizarCortesFixos",
+    "normalizarFuncaoTraz",
+    "nosDoAnel",
+    "novaCabeca",
+    "percentil",
+    "pontuarCabeca",
+    "pontuarNo",
+    "produto",
+    "refinadorPorModo",
+    "semRoubados",
+    "serializarCabeca",
+    "treinarCabeca",
+    "vetorValido"
+  ],
+  "./decisoes/loop": [
+    "ACAO_BLOQUEADO",
+    "ACAO_PRONTO",
+    "CORTE_ACAO_PADRAO",
+    "CORTE_FIM_PADRAO",
+    "K_PADRAO",
+    "MAIS_NAO",
+    "MAIS_SIM",
+    "ORCAMENTO_PADRAO",
+    "PISO_ESCRITA",
+    "PISO_EXECUCAO",
+    "PREFIXO_CARREGAR",
+    "chaveDeArg",
+    "lerPasso",
+    "perguntasDoPasso",
+    "resumirResultado",
+    "rodarLoop"
+  ],
+  "./decisoes/loop/valores-rotulados": [
+    "TETO_POR_TIPO",
+    "comOpcoesRotuladas",
+    "extrairRotulados",
+    "mesclarRotulados"
+  ],
+  "./decisoes/nucleo": [
+    "ErroDeForma",
+    "TETO_PERGUNTAS",
+    "TETO_TARDIO_MS",
+    "aquecer",
+    "choice",
+    "cortarEstado",
+    "criarCliente",
+    "criarFetchKeepAlive",
+    "criarProvedorDeCliente",
+    "noul",
+    "perguntar",
+    "score"
+  ],
+  "./decisoes/perguntas": [
+    "CRITERIA_HIDRATAR_POWER",
+    "CRITERIA_PREFETCH",
+    "CRITERIA_PRONTO",
+    "DESC_FORA_DA_LISTA",
+    "DESC_NENHUM",
+    "DESC_SEM_ARGUMENTO",
+    "FORA_DA_LISTA",
+    "INSTRUCOES_NEXT_TOOL",
+    "INSTRUCOES_PRONTO",
+    "NENHUM",
+    "SEM_ARGUMENTO",
+    "candidatoUtilizavel",
+    "enumUtilizavelDePrefetch",
+    "instrucoesArgumento",
+    "instrucoesArgumentoPrefetch",
+    "instrucoesHidratarPower",
+    "instrucoesPrefetch",
+    "mapearChavesPfarg"
+  ],
+  "./decisoes/treino": [
+    "ANEIS_TREINAVEIS",
+    "ErroDeTreino",
+    "criarServicoDeTreino",
+    "lerOpcoes"
+  ],
+  "./decisoes/caso": [
+    "FRACAO_AVALIACAO",
+    "META",
+    "ORIGENS_DO_CASO",
+    "REGRA_DO_CASO",
+    "cargaNovaDe",
+    "conferir",
+    "ehDeAvaliacao",
+    "ehTrivial",
+    "jevMelhorDe",
+    "jevTrazidasDe",
+    "kairosDoExplain",
+    "montarCaso",
+    "trazidasDe",
+    "triar"
+  ],
+  "./decisoes/registro": [
+    "ANEIS_DO_REGISTRO",
+    "arquivoDoRegistro",
+    "chaveDoCaso",
+    "estadoDoAnel",
+    "gravarCaso",
+    "lerCasos",
+    "lerCasosAsync",
+    "lerEstado",
+    "marcarAdiadaDoAnel",
+    "marcarValido",
+    "reconciliarEstado",
+    "registrarFalhaDoAnel",
+    "registroExiste",
+    "retratoDoContador",
+    "rotacionarRegistro",
+    "zerarContador"
+  ],
+  "./decisoes/versoes": [
+    "VERSOES_MANTIDAS",
+    "caminhoAtual",
+    "estadoDoPonteiro",
+    "gravarReposicao",
+    "gravarVersao",
+    "lerHistorico",
+    "lerReposicao",
+    "listarVersoes",
+    "registrarHistorico",
+    "reposicaoExiste",
+    "versaoAtual",
+    "voltar"
+  ],
+  "./decisoes/lote": [
+    "PESO_NEGATIVO_FRACO",
+    "atualizarPorLote"
+  ],
+  "./decisoes/trava": [
+    "quemTravou",
+    "tentarTravar",
+    "travado"
+  ],
+  "./decisoes/worker-treino": [
+    "TIMEOUT_TREINO_MS",
+    "treinarCabecaNoWorker"
+  ],
+  "./decisoes/extrair": [
+    "extrairCasos",
+    "pisoIncondicional"
+  ],
+  "./decisoes/casos": [
+    "META_TOOLS",
+    "capacidadeDoPedido",
+    "capacidadeDoServidorMcp",
+    "casoDaInteracao",
+    "ehCaminhoDeBancada",
+    "ehFuturo",
+    "ehTurnoAutomatico",
+    "mapaDeFuncoes",
+    "resolverNomeDeOperacao",
+    "tsDaPasta"
+  ],
+  "./decisoes/dominio": [
+    "FONTES_AVALIACAO",
+    "MIN_CANDIDATOS_RECALL",
+    "PORTAO_PADRAO",
+    "alvosDoCaso",
+    "avaliarPortaoAnel",
+    "capacidadeDoRef",
+    "contarPareado",
+    "dominioDoCaso",
+    "normalizarPortao",
+    "novoFunil",
+    "novoPareado",
+    "recall3"
+  ],
+  "./decisoes/item-do-registro": [
+    "PESO_NEGATIVO_FRACO",
+    "aleatorio",
+    "amostrar",
+    "domSemNeutras",
+    "foraDoCaso",
+    "formatoDoDominio",
+    "itemDoRegistro",
+    "limitarFracos"
+  ],
+  "./decisoes/refinadores": [
+    "PADRAO_PROVIDER",
+    "PADRAO_SKILL",
+    "PADRAO_TOOL",
+    "criarRefinadorJev",
+    "refinadorDeCapacidades",
+    "refinadorDeFuncoes",
+    "refinadorDeHabilidades",
+    "refinadoresDoChat"
+  ],
+  "./decisoes/transporte": [
+    "aquecer",
+    "criarFetchKeepAlive"
+  ],
+  "./apoio/continuidade": [
+    "MAX_CHARS_ULTIMA_DO_ASSISTENTE",
+    "MAX_PALAVRAS_RESPOSTA_CURTA",
+    "classificarResposta",
+    "comUltimaDoAssistentePeloFim",
+    "decidirContinuidade",
+    "terminouComPergunta"
+  ],
+  "./apoio/intencao": [
+    "TETO_ITENS_INTENCAO",
+    "funcoesParaIntencao",
+    "lerIntencao",
+    "textoDaIntencao"
+  ],
+  "./apoio/consultas-anteriores": [
+    "consultasDoTurnoDe",
+    "mapaDeFuncoesDoTurno"
+  ],
+  "./apoio/chaveDasCapacidades": [
+    "chaveDasCapacidades"
+  ],
+  "./apoio/conversa": [
+    "LIMITES_CONVERSA_PADRAO",
+    "conversaDoHistorico"
+  ],
+  "./apoio/valores-do-registro": [
+    "JANELA_TURNOS",
+    "produtoresDasCapacidades",
+    "valoresDoRegistro"
+  ],
+  "./apoio/pista-contexto": [
+    "MAX_CHARS_ASSISTENTE_RESPOSTA_CURTA",
+    "MAX_CHARS_PAPEL",
+    "MAX_CHARS_PISTA",
+    "MAX_CHARS_USUARIO_RESPOSTA_CURTA",
+    "decidirPistaDeContexto"
+  ]
+}
