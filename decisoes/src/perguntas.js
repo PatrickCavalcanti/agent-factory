@@ -1,6 +1,11 @@
 // packages/decisions/src/perguntas.js
-export const INSTRUCOES_NEXT_TOOL =
-  'Você roteia o assistente pessoal Igris. Dado o pedido do usuário, o contexto dos powers e da sessão (o mesmo que o assistente vê), a conversa anterior, as ações já executadas (com resultados) e o que o assistente já disse, qual tool deve ser chamada EM SEGUIDA? Exatamente uma. Consulte antes de agir, honre condições, nunca repita ação já bem-sucedida com os mesmos argumentos. Se o assistente já tem no contexto o que precisa para responder, ou nada do catálogo se aplica, escolha respond_to_user. Ignore a escrita de memória de trabalho (mt_*): não é uma ação pedida pelo usuário.';
+/**
+ * `assistente` = como o texto chama o assistente roteado (o Igris passa `'assistente pessoal Igris'`; o padrão é neutro).
+ * Só o nome entra: o resto do texto é fixo (o modelo decisor lê isto, então mudar o texto muda o comportamento).
+ */
+export const instrucoesNextTool = (assistente = 'assistente pessoal') =>
+  `Você roteia o ${assistente}. Dado o pedido do usuário, o contexto dos powers e da sessão (o mesmo que o assistente vê), a conversa anterior, as ações já executadas (com resultados) e o que o assistente já disse, qual tool deve ser chamada EM SEGUIDA? Exatamente uma. Consulte antes de agir, honre condições, nunca repita ação já bem-sucedida com os mesmos argumentos. Se o assistente já tem no contexto o que precisa para responder, ou nada do catálogo se aplica, escolha respond_to_user. Ignore a escrita de memória de trabalho (mt_*): não é uma ação pedida pelo usuário.`;
+export const INSTRUCOES_NEXT_TOOL = instrucoesNextTool();
 export const INSTRUCOES_PRONTO =
   'O assistente já tem, no contexto atual (blocos dos powers, resultados das ações executadas, conversa), tudo o que precisa para responder ao usuário agora, sem chamar mais nenhuma tool.';
 export const CRITERIA_PRONTO = { true: 'nada falta buscar: responde com o que já está no contexto', false: 'ainda falta executar ou consultar algo para atender o pedido' };

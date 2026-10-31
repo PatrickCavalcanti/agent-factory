@@ -101,6 +101,8 @@ function emUsoDoAnel(dirDecisoes, anel, slug) {
 export function criarServicoDeTreino({ obterDataDir, obterEmbedder, invalidar = () => {}, extrair = extrairCasos, treinarCabecaFn = treinarCabecaNoWorker, obterPiso, portao = PORTAO_PADRAO, agora = () => new Date(), raizPowers, dirCache = dirCachePadrao }) {
   // `obterPiso` é OBRIGATÓRIO: o piso vem do host (derivado de `capacidadeDoPower` + `toolEhFixa`), nunca de um padrão silencioso.
   if (typeof obterPiso !== 'function') throw new TypeError('criarServicoDeTreino: `obterPiso` é obrigatório (função que devolve {ids, fixas, powers?})');
+  // `raizPowers` é obrigatório quando o extrator é o padrão (`extrairCasos` lê os manifestos dali): falha na criação, não no primeiro `treinar()`.
+  if (extrair === extrairCasos && (typeof raizPowers !== 'string' || !raizPowers)) throw new TypeError('criarServicoDeTreino: `raizPowers` é obrigatório com o extrator padrão (raiz dos manifestos de capacidade)');
   return {
     get ocupado() { return travado(); },
     /** Relatório de conferência do registro (`GET /api/decisoes/conferencia`): só leitura, sem texto de pedido. */

@@ -245,6 +245,7 @@
     "instrucoesArgumento",
     "instrucoesArgumentoPrefetch",
     "instrucoesHidratarPower",
+    "instrucoesNextTool",
     "instrucoesPrefetch",
     "mapearChavesPfarg"
   ],

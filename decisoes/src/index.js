@@ -2,7 +2,7 @@
 import { montarCriteria, RESPOND } from './catalogo.js';
 import { montarEstado } from './estado.js';
 import { aplicarGates, CORTES_PADRAO } from './gates.js';
-import { INSTRUCOES_NEXT_TOOL, INSTRUCOES_PRONTO, CRITERIA_PRONTO, instrucoesPrefetch, CRITERIA_PREFETCH, instrucoesArgumento, NENHUM, DESC_NENHUM, instrucoesArgumentoPrefetch, SEM_ARGUMENTO, DESC_SEM_ARGUMENTO, enumUtilizavelDePrefetch, candidatoUtilizavel, mapearChavesPfarg, instrucoesHidratarPower, CRITERIA_HIDRATAR_POWER } from './perguntas.js';
+import { instrucoesNextTool, INSTRUCOES_PRONTO, CRITERIA_PRONTO, instrucoesPrefetch, CRITERIA_PREFETCH, instrucoesArgumento, NENHUM, DESC_NENHUM, instrucoesArgumentoPrefetch, SEM_ARGUMENTO, DESC_SEM_ARGUMENTO, enumUtilizavelDePrefetch, candidatoUtilizavel, mapearChavesPfarg, instrucoesHidratarPower, CRITERIA_HIDRATAR_POWER } from './perguntas.js';
 export { RESPOND, montarCriteria, montarEstado, aplicarGates, CORTES_PADRAO };
 export { criarCliente } from './cliente.js';
 export { criarClienteDoGateway } from './cliente-gateway.js';
@@ -29,8 +29,8 @@ export { TETO_TARDIO_MS, TETO_PERGUNTAS };
 /** @typedef {{ tool: string, motivo: string, param?: string }} PrefetchDescartado */
 /** @typedef {{ hidratar: HidratarPower[], sugestao: Sugestao[], indice: {tool:string, power:string}[], prefetch: PrefetchAceito[], prefetchDescartados: PrefetchDescartado[], pronto: number, dicas: object, respostasDosPowers: object, escolha: string|null, confidence: number, meta: { ms: number, tokens: number, custo: number, modelo: string|null, degradado: false|string, estado?: object, cortes?: string[], perguntas?: string[], erro?: string, respostaCrua?: object } }} Decisao */
 
-export function montarPerguntas({ catalogo, candidatos = {}, perguntasDosPowers = {}, nivel = 'curta', prioridadeDePower, powersCandidatos = [] }) {
-  const q = { next_tool: { type: 'choice', instructions: INSTRUCOES_NEXT_TOOL, criteria: montarCriteria(catalogo, { nivel, prioridadeDePower }) }, pronto: { type: 'noul', instructions: INSTRUCOES_PRONTO, criteria: CRITERIA_PRONTO } };
+export function montarPerguntas({ catalogo, candidatos = {}, perguntasDosPowers = {}, nivel = 'curta', prioridadeDePower, powersCandidatos = [], assistente }) {
+  const q = { next_tool: { type: 'choice', instructions: instrucoesNextTool(assistente), criteria: montarCriteria(catalogo, { nivel, prioridadeDePower }) }, pronto: { type: 'noul', instructions: INSTRUCOES_PRONTO, criteria: CRITERIA_PRONTO } };
   // H1/H6 (adendo §15): um `noul` por power CANDIDATO NÃO ATIVO — `powersCandidatos` já vem
   // filtrado pelo chamador (H4: power ativo não é perguntado, não há decisão a tomar).
   // Protegida do teto de TETO_PERGUNTAS igual a prefetch_*/pfarg_* (H6: sem elas não há
@@ -121,7 +121,7 @@ export function montarPerguntas({ catalogo, candidatos = {}, perguntasDosPowers 
  * @param {{ estado: object, catalogo: Array, candidatos?: object, perguntasDosPowers?: object, cliente: {decidir:Function}|null, cortes?: object, nivel?: string, prioridadeDePower?: object, tetoChars?: number, powersCandidatos?: Array<{id:string, desc?:string}> }} p
  * @returns {Promise<Decisao>}
  */
-export async function decidir({ estado, catalogo: catalogoOriginal, candidatos = {}, perguntasDosPowers = {}, cliente, cortes, nivel = 'curta', prioridadeDePower, tetoChars, prazoMs, aoChegarTarde, estrategiasDeCandidatos, powersCandidatos = [] }) {
+export async function decidir({ estado, catalogo: catalogoOriginal, candidatos = {}, perguntasDosPowers = {}, cliente, cortes, nivel = 'curta', prioridadeDePower, tetoChars, prazoMs, aoChegarTarde, estrategiasDeCandidatos, powersCandidatos = [], assistente }) {
   // Parâmetros de texto livre das tools de prefetch ganham candidatos das estratégias
   // (candidatos.js) — mesmo catálogo derivado para perguntas e gates, senão os dois lados
   // divergem sobre quais pfarg_* existem.
@@ -134,7 +134,7 @@ export async function decidir({ estado, catalogo: catalogoOriginal, candidatos =
   // _cortes é meta-informação da montagem do estado (rótulos do que foi cortado pelo teto),
   // não conteúdo do pedido: fica de fora do que é enviado ao modelo e vai só no diagnóstico.
   const { _cortes, ...state } = montarEstado(estado, { tetoChars });
-  const questions = montarPerguntas({ catalogo, candidatos, perguntasDosPowers, nivel, prioridadeDePower, powersCandidatos });
+  const questions = montarPerguntas({ catalogo, candidatos, perguntasDosPowers, nivel, prioridadeDePower, powersCandidatos, assistente });
   // montarDecisao() converte o retorno genérico de perguntar() (nucleo/perguntar.js —
   // {answers, meta}, nunca lança) na Decisao completa da hidratação: aplica os gates quando
   // a chamada não degradou, e sempre acrescenta o diagnóstico específico deste chamador

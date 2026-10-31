@@ -538,8 +538,10 @@ export const NOMES_PADRAO = {
 /**
  * Remove registros de operações imitados pelo modelo no texto da resposta,
  * antes de costurar o bloco da plataforma no histórico (senão o bloco aparece
- * duas vezes e o modelo passa a imitá-lo). Bloco aberto sem fechamento
- * descarta o resto do texto. (Do Ariadne 7d5e76e5.)
+ * duas vezes e o modelo passa a imitá-lo). Só remove blocos COMPLETOS
+ * (`<nome>…</nome>`); abertura sem fechamento — p.ex. a tag citada em prosa —
+ * mantém o texto intacto. (Do Ariadne 7d5e76e5; o descarte do resto foi
+ * trocado por este comportamento.)
  * @param {string} texto
  * @param {string} [nome] nome da tag (padrão `NOMES_PADRAO.operacoes`)
  */
@@ -548,11 +550,13 @@ export function removerBlocosDeOperacoes(texto, nome = NOMES_PADRAO.operacoes) {
   const fechamento = `</${nome}>`;
   let limpo = '';
   let inicio = 0;
-  let abre;
-  while ((abre = texto.indexOf(abertura, inicio)) !== -1) {
+  let fecha;
+  while ((fecha = texto.indexOf(fechamento, inicio)) !== -1) {
+    // Só bloco COMPLETO: o par é o fechamento e a abertura mais próxima antes dele. Uma abertura
+    // citada em prosa (sem par) fica no texto, e não leva consigo o que vem depois.
+    const abre = texto.lastIndexOf(abertura, fecha - abertura.length);
+    if (abre < inicio) { limpo += texto.slice(inicio, fecha + fechamento.length); inicio = fecha + fechamento.length; continue; }
     limpo += texto.slice(inicio, abre);
-    const fecha = texto.indexOf(fechamento, abre + abertura.length);
-    if (fecha === -1) return limpo;
     inicio = fecha + fechamento.length;
   }
   return limpo + texto.slice(inicio);
@@ -787,6 +791,7 @@ function legendasPadrao(n) {
  * @typedef {Object} ConstrutorDePrompt
  * @property {(entrada: EntradaDaAcumulacao) => ResultadoDaAcumulacao} acumular
  * @property {(entrada: EntradaDaMontagem<TContexto>) => PayloadDoTurno} montar
+ * @property {(texto: string) => string} removerOperacoes `removerBlocosDeOperacoes` com o nome efetivo da tag de operações (após mesclar com `NOMES_PADRAO`) — a mesma fonte de `blocoDeOperacoes`.
  * @property {(operacoes: OperacaoDoTurno[]) => string} blocoDeOperacoes O registro compacto do que um turno executou, para costurar na mensagem do
  *   assistente daquele turno.
  *
@@ -806,7 +811,8 @@ function legendasPadrao(n) {
  */
 export function criarConstrutorDePrompt(config) {
   /** @type {NomesDeSecao} */
-  const nomes = { ...NOMES_PADRAO, ...config.nomes }
+  // Mescla por CHAVE, ignorando `undefined`: `{ operacoes: undefined }` cai no padrão em vez de virar a tag `<undefined>`.
+  const nomes = { ...NOMES_PADRAO, ...Object.fromEntries(Object.entries(config.nomes ?? {}).filter(([, v]) => v !== undefined)) }
   // Mescla por CHAVE, não por objeto. `{ ...PADRAO, ...config.legendas }`
   // sobrescreve por chave PRESENTE: um host que passe `{ indice: '' }` ou
   // `{ indice: undefined }` apagaria o default e o catálogo voltaria a chegar
@@ -1539,5 +1545,7 @@ export function criarConstrutorDePrompt(config) {
     return secoesDoSystem(contexto, system).map(s => s.conteudo).join('\n\n')
   }
 
-  return { acumular, montar, blocoDeOperacoes, renderizarSystem }
+  /** Remove blocos de operações imitados, com o nome EFETIVO da tag (o mesmo de `blocoDeOperacoes`). */
+  const removerOperacoes = (texto) => removerBlocosDeOperacoes(texto, nomes.operacoes)
+  return { acumular, montar, blocoDeOperacoes, removerOperacoes, renderizarSystem }
 }
