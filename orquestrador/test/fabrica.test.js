@@ -100,7 +100,7 @@ test('a fábrica monta o prompt, roda o loop e executa a tool pelo nome exposto'
     base: () => [{ nome: 'identidade', conteudo: '<identidade>Agente de teste.</identidade>' }],
     capacidades: [capacidade(chamadas)],
     protocolo: 'envelope',
-    protocoloOpts: { headless: true },
+    protocoloOpts: { headless: true, prefixoDoEnvelope: 'igris' },
     provider: providerDeTexto([comComando, fecha]),
     // ver "BUG ENCONTRADO #2" no topo do arquivo: sem isto, o default
     // `IDENTIDADE` corrompe toda tool registrada no genos.
@@ -116,6 +116,7 @@ test('a fábrica monta o prompt, roda o loop e executa a tool pelo nome exposto'
 
   assert.equal(resultado.type, 'completed');
   assert.deepEqual(chamadas, [{ dia: 'hoje' }]);
+  // o prefixo da config chega ao schema entregue ao turno (e ao provider)
   assert.equal(schema.name, 'igris_envelope_headless');
   // I1: afirmar a PRESENÇA antes de comparar a ordem — `indexOf('<protocolo>')`
   // devolve -1 se a tag não estiver lá, e `-1 < n` é verdadeiro para qualquer

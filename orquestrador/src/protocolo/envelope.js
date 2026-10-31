@@ -99,10 +99,12 @@ function extrairTexto(textoCru) {
 }
 
 /**
- * @param {{ headless?: boolean }} [opts]
+ * @param {{ headless?: boolean, prefixoDoEnvelope?: string }} [opts]
+ *   `prefixoDoEnvelope`: prefixo do nome do schema (`<prefixo>_envelope*`); sem ele,
+ *   `envelope*`. Vem de `ConfigDoOrquestrador.protocoloOpts`.
  * @returns {EstrategiaDeProtocolo}
  */
-export function estrategiaEnvelope({ headless = true } = {}) {
+export function estrategiaEnvelope({ headless = true, prefixoDoEnvelope } = {}) {
   return {
     id: 'envelope',
     toolProtocol: 'json_output',
@@ -112,7 +114,7 @@ export function estrategiaEnvelope({ headless = true } = {}) {
     // escreveu no envelope/fence.
     registraCapacidades: true,
     secaoInvariante: () => ({ nome: 'protocolo', conteudo: INVARIANTE }),
-    schema: () => resolveEnvelopeSchema({ headless }),
+    schema: () => resolveEnvelopeSchema({ headless, prefixoDoEnvelope }),
     forceFinishMessage: `${AVISO_PERTO_DO_TETO} Emita agora o envelope final, sem nenhum item em \`comandos\`.`,
     extrairTexto,
   };

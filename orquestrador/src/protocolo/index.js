@@ -56,7 +56,7 @@ const FABRICAS = {
 /**
  * @param {'envelope'|'fence'|'nativo'} id
  * @param {object} [opts] repassado à fábrica da estratégia (ignorado por
- *   `fence` e `nativo` — só `envelope` aceita `{ headless }`)
+ *   `fence` e `nativo` — só `envelope` aceita `{ headless, prefixoDoEnvelope }`)
  * @returns {EstrategiaDeProtocolo}
  */
 export function resolverProtocolo(id, opts) {

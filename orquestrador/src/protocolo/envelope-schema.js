@@ -129,26 +129,64 @@ function envelope(opts) {
   };
 }
 
-/** Sessão com usuário presente: fala, chat, layout e comandos. */
-export const SCHEMA_COMPLETA = {
-  name: 'igris_envelope',
-  schema: envelope({ comFala: true, comLayout: true, comIntencao: true }),
-};
+/**
+ * Nome do schema que vai ao provider (`response_format.json_schema.name`): sem
+ * prefixo, `envelope`, `envelope_headless`, `envelope_contribuicoes`; com prefixo,
+ * `<prefixo>_envelope*` (o Igris passa `'igris'` e mantém os nomes de sempre).
+ * O nome é parte do que o vendor vê — mudar o prefixo muda a chave de cache de
+ * gramática, então o host escolhe uma vez e não varia por sessão.
+ */
+function nomeDoSchema(prefixo, sufixo) {
+  const base = prefixo ? `${prefixo}_envelope` : 'envelope';
+  return sufixo ? `${base}_${sufixo}` : base;
+}
 
-/** Agente em background: ninguém vendo nem ouvindo. Sem fala, sem layout. */
-export const SCHEMA_HEADLESS = {
-  name: 'igris_envelope_headless',
-  schema: envelope({ comFala: false, comLayout: false }),
-};
+const CACHE_DE_SCHEMAS = new Map();
 
 /**
- * Completa + `_contribuicoes_usadas` (aceite de contribuição de comportamento).
- * Só escolhida com `comContribuicoes: true` — o interruptor `comportamento`.
+ * As três variantes fechadas para um prefixo de nome. Memoizada por prefixo: o
+ * mesmo prefixo devolve os MESMOS objetos (identidade estável, como as constantes).
+ *
+ * @param {string} [prefixo] vazio/ausente = nome neutro
+ * @returns {{ completa: object, headless: object, completaContribuicoes: object }}
  */
-export const SCHEMA_COMPLETA_CONTRIBUICOES = {
-  name: 'igris_envelope_contribuicoes',
-  schema: envelope({ comFala: true, comLayout: true, comIntencao: true, comContribuicoes: true }),
-};
+export function schemasDoEnvelope(prefixo) {
+  const chave = prefixo || '';
+  let conjunto = CACHE_DE_SCHEMAS.get(chave);
+  if (!conjunto) {
+    conjunto = {
+      // Sessão com usuário presente: fala, chat, layout e comandos.
+      completa: {
+        name: nomeDoSchema(chave, ''),
+        schema: envelope({ comFala: true, comLayout: true, comIntencao: true }),
+      },
+      // Agente em background: ninguém vendo nem ouvindo. Sem fala, sem layout.
+      headless: {
+        name: nomeDoSchema(chave, 'headless'),
+        schema: envelope({ comFala: false, comLayout: false }),
+      },
+      // Completa + `_contribuicoes_usadas` (aceite de contribuição de comportamento).
+      // Só escolhida com `comContribuicoes: true` — o interruptor `comportamento`.
+      completaContribuicoes: {
+        name: nomeDoSchema(chave, 'contribuicoes'),
+        schema: envelope({ comFala: true, comLayout: true, comIntencao: true, comContribuicoes: true }),
+      },
+    };
+    CACHE_DE_SCHEMAS.set(chave, conjunto);
+  }
+  return conjunto;
+}
+
+const NEUTRO = schemasDoEnvelope();
+
+/** Sessão com usuário presente, nome neutro (`envelope`). */
+export const SCHEMA_COMPLETA = NEUTRO.completa;
+
+/** Agente em background, nome neutro (`envelope_headless`). */
+export const SCHEMA_HEADLESS = NEUTRO.headless;
+
+/** Completa + contribuições, nome neutro (`envelope_contribuicoes`). */
+export const SCHEMA_COMPLETA_CONTRIBUICOES = NEUTRO.completaContribuicoes;
 
 /**
  * Resolve a variante no boot da sessão. Acrescentar uma variante nova
@@ -157,8 +195,11 @@ export const SCHEMA_COMPLETA_CONTRIBUICOES = {
  * `headless` vence `comContribuicoes`: agente de fundo não declara contribuição de
  * comportamento (no fecho do turno de fundo nada é promovido), e um quarto schema
  * seria uma gramática a mais para os vendors compilarem sem ganho.
+ *
+ * `prefixoDoEnvelope`: prefixo do nome do schema (ver `schemasDoEnvelope`).
  */
-export function resolveEnvelopeSchema({ headless = false, comContribuicoes = false } = {}) {
-  if (headless) return SCHEMA_HEADLESS;
-  return comContribuicoes ? SCHEMA_COMPLETA_CONTRIBUICOES : SCHEMA_COMPLETA;
+export function resolveEnvelopeSchema({ headless = false, comContribuicoes = false, prefixoDoEnvelope } = {}) {
+  const s = schemasDoEnvelope(prefixoDoEnvelope);
+  if (headless) return s.headless;
+  return comContribuicoes ? s.completaContribuicoes : s.completa;
 }

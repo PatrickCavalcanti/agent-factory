@@ -7,7 +7,13 @@ test('estrategiaEnvelope declara json_output e a variante headless', () => {
   const e = estrategiaEnvelope({ headless: true });
   assert.equal(e.id, 'envelope');
   assert.equal(e.toolProtocol, 'json_output');
-  assert.equal(e.schema().name, 'igris_envelope_headless');
+  assert.equal(e.schema().name, 'envelope_headless');
+});
+
+test('estrategiaEnvelope com prefixoDoEnvelope prefixa o nome do schema', () => {
+  assert.equal(estrategiaEnvelope({ headless: true, prefixoDoEnvelope: 'igris' }).schema().name, 'igris_envelope_headless');
+  assert.equal(estrategiaEnvelope({ headless: false, prefixoDoEnvelope: 'igris' }).schema().name, 'igris_envelope');
+  assert.equal(resolverProtocolo('envelope', { headless: true, prefixoDoEnvelope: 'x' }).schema().name, 'x_envelope_headless');
 });
 
 test('a seção invariante NÃO menciona campos de forma do host', () => {

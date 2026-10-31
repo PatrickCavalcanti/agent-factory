@@ -108,7 +108,12 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   turno não precisa entrar aqui: uma vez no prompt, ela fica lá (é o próprio `acumular` que a
  *   mantém).
  * @property {'envelope'|'fence'|'nativo'} protocolo
- * @property {object} [protocoloOpts] repassado à estratégia (ex.: { headless })
+ * @property {object} [protocoloOpts] repassado à estratégia (ex.: { headless }).
+ *   Em `envelope` aceita também `prefixoDoEnvelope` (string, padrão ausente): prefixo do
+ *   NOME do schema de resposta enviado ao provider — sem ele `envelope`,
+ *   `envelope_headless`, `envelope_contribuicoes`; com ele `<prefixo>_envelope*`. O Igris
+ *   passa `'igris'` (nomes `igris_envelope*`, byte a byte como antes). Escolha uma vez por
+ *   host: o nome entra na chave de cache de gramática do vendor.
  * @property {Partial<Record<'indice'|'candidatos', string>>} [legendas] Sobrescreve a
  *   legenda de uma seção do catálogo. Mescla POR CHAVE, com fallback em valor
  *   falsy: uma chave ausente, `''` ou `undefined` cai de volta no default do
