@@ -195,6 +195,13 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   runtime do genos (`createOrchestrator({ runtimeObserver })`): recebe os eventos NORMALIZADOS
  *   `agent.*` (`kind`, `seq`, `turnIndex`, `payload`), diferentes dos crus de `aoEvento`. Repassado
  *   sem tocar — serve às projeções de observabilidade do host (agentic-loop, run-timeline).
+ * @property {object} [genos] Opções extras repassadas ao `createOrchestrator` do genos, para abrir uma
+ *   opção que a fábrica não expõe. As chaves são mescladas ANTES das que a fábrica define: em
+ *   conflito, a FÁBRICA vence (ela controla `provider`, `tools`, `toolProtocol`, `initialMessages`,
+ *   `outputMode`, `maxIterations`, `metadata`, `formatUserMessages`, `runStore`, etc.). Chave que a
+ *   fábrica só define condicionalmente (ex.: `pricingResolver`, `runtimeObserver`, `validateTurn`,
+ *   `unknownToolMessage`) vale a do host quando o campo próprio da config está ausente. Default
+ *   ausente (nada é repassado).
  * @property {{ estimateCostUsd: (i: { provider: string, model: string, usage?: object }) => number|null }} [pricingResolver]
  *   Repassado cru para `createOrchestrator({ pricingResolver })`: é o genos quem resolve `costUsd`
  *   de cada `provider.completed` (`response.costUsd ?? pricingResolver.estimateCostUsd(...)`). Sem
@@ -3937,6 +3944,10 @@ export function criarOrquestrador(config) {
       return enquadramento;
     };
     const orchestrator = createOrchestrator({
+      // Passagem genérica (`config.genos`): vem PRIMEIRO, então toda chave que a fábrica define
+      // abaixo vence. Chaves que a fábrica só define condicionalmente (ex.: `pricingResolver`,
+      // `validateTurn`) valem do host quando a fábrica não as define.
+      ...(config.genos ?? {}),
       provider: config.provider(ctx),
       runStore,
       // N-guarda: `manager`/`carregadasNoTurno` habilitam o guarda a reconsultar,
