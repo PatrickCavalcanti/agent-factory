@@ -559,8 +559,8 @@ Além da troca de especificadores e dos parâmetros (que, com os valores da seç
 2. Igris/main: `node scripts/suite.mjs --baseline`; medir deriva.
 3. `node scripts/worktree.mjs new ligar-agent-factory --plano …`.
 4. Catálogo + `package.json` + override; `pnpm install`; `node scripts/check-git-deps.mjs`;
-   `pnpm why genos-orchestrator` e `pnpm why @okds/kairos` → uma cópia só. Rodar a suíte só com o bump
-   do kairos (commit próprio).
+   `pnpm why genos-orchestrator` e `pnpm why @okds/kairos` → uma cópia só. O kairos **não muda**
+   (seção 1); `node scripts/suite.mjs` contra a baseline para isolar o efeito do install (commit próprio).
 5. Trocar especificadores (seção 3) **sem apagar nada** — as duas cópias coexistem; commit mecânico. Exceção: `executor/src/orchestration/decisoes.js` troca junto com o §4.2 (passo 6), senão o executor fica vermelho entre os passos.
 6. Passar os parâmetros (seção 4) e os ajustes da seção 5; commit.
 7. `node scripts/suite.mjs --so executor,powers,shadows,api,orchestrator,decisions`; só então:
