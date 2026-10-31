@@ -85,10 +85,10 @@ test('tudoPiso distingue os dois casos', () => {
 });
 
 /**
- * TRAVA A — `nomeExposto` (aqui) e uma REIMPLEMENTACAO de `exposedName` do
- * kairos, nao um import: a fabrica precisa do nome exposto para MONTAR o
- * prompt, antes de qualquer provider existir, e precisa do `{ prefixar }`, que
- * e conceito so nosso. Duas definicoes da mesma convencao, portanto.
+ * TRAVA A — `nomeExposto` (aqui) DELEGA para `exposedName` do kairos
+ * (`@okds/kairos/core/names`) no caso prefixado; `{ prefixar }` e conceito so
+ * nosso e fica na fabrica. A trava continua para que ninguem volte a
+ * reimplementar a formula localmente sem que isso seja notado.
  *
  * O risco nao e teorico. `defineProvider` (adapters/native.ts) CHAMA
  * `exposedName(provider.id, ts.key)` no ato de autoria, e e esse nome que o

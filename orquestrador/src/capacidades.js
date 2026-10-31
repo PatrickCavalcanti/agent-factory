@@ -17,6 +17,7 @@
 // - `montarProviders` → registry do KAIROS (prompt: índice, contratos, ranking)
 // - `toolsExpostas`   → registry do GENOS (execução: nome exposto + zod)
 import { defineProvider } from '@okds/kairos/adapters/native';
+import { exposedName } from '@okds/kairos/core/names';
 import { contratoDeArgumentos } from './contrato.js';
 
 /**
@@ -230,13 +231,16 @@ function contratoPadrao(tool, inputSchema) {
  * aceita hífen: `mcp-playwright__browser_click` ao lado de `codigo__ler_codigo`.
  * Quem decide isso é quem REGISTRA; o kairos só garante a fronteira única.
  *
- * ⚠️ Esta função e `exposedName` do `@okds/kairos` (`src/core/names.ts`) são
- * DUAS definições da mesma convenção e precisam concordar. Divergir não quebra
- * o registro — quebra na CHAMADA, com "tool não registrada" na grafia exata
- * que o prompt anunciou.
+ * A formatação do nome prefixado DELEGA para `exposedName` de
+ * `@okds/kairos/core/names` (subpath público desde 0.830.260918): é a mesma
+ * função que `defineProvider` e o genos usam, então prompt e execução não têm
+ * como divergir. Só `{ prefixar: false }` é conceito nosso (o kairos não tem
+ * noção de "capacidade única, prefixo não desambigua nada") e fica aqui.
+ * `exposedName` também valida <=64 chars e lança — o mesmo erro que
+ * `defineProvider` já daria em `montarProviders`, só que mais cedo.
  */
 export function nomeExposto(capId, toolName, { prefixar = true } = {}) {
-  return prefixar ? `${capId}__${toolName}` : toolName;
+  return prefixar ? exposedName(capId, toolName) : toolName;
 }
 
 /**
