@@ -130,7 +130,7 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   (`unchanged`), o piso entra com a descrição (`<provider>/instructions`) e o índice de TODAS as
  *   tools dos providers `loading.always` — a mesma forma de um turno normal —, em vez de só as
  *   `pinned`. Sem isto o turno seguinte reescreve o começo do bloco de capacidades. Default false.
- * @property {() => object} provider provider do genos
+ * @property {(ctx?: object) => object} provider provider do genos — chamado a CADA turno com o ctx do turno (o mesmo de `executarTurno`), para o host escolher o modelo por execução. Quem ignora o argumento segue funcionando.
  * @property {(nome: string, definicao: object) => object} [decorarTool] gancho do consumidor
  * @property {object|null} [embedder] Embedder do Kairos. Três valores, três
  *   significados, e a diferença entre os dois últimos importa:
@@ -3920,7 +3920,7 @@ export function criarOrquestrador(config) {
       return enquadramento;
     };
     const orchestrator = createOrchestrator({
-      provider: config.provider(),
+      provider: config.provider(ctx),
       runStore,
       // N-guarda: `manager`/`carregadasNoTurno` habilitam o guarda a reconsultar,
       // A CADA CHAMADA (não só na montagem), o que `load_capability` trouxe NO
