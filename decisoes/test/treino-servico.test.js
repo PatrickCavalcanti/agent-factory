@@ -589,3 +589,12 @@ test('extrairCasos / pisoIncondicional: raizPowers é obrigatório (sem padrão 
   assert.throws(() => pisoIncondicional(), /raizPowers/);
   assert.throws(() => pisoIncondicional({}), /raizPowers/);
 });
+
+test('criarServicoDeTreino: extrator padrão sem raizPowers falha na criação (não no treinar)', () => {
+  const base = { obterPiso: PISO_DE_TESTE, obterDataDir: () => '/x', obterEmbedder: () => null };
+  assert.throws(() => criarServicoDeTreino(base), /raizPowers/);
+  assert.throws(() => criarServicoDeTreino({ ...base, raizPowers: '' }), /raizPowers/);
+  // com raizPowers, ou com extrator próprio, cria normalmente
+  assert.doesNotThrow(() => criarServicoDeTreino({ ...base, raizPowers: '/raiz/x' }));
+  assert.doesNotThrow(() => criarServicoDeTreino({ ...base, extrair: async () => ({}) }));
+});

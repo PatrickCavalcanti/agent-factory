@@ -29,7 +29,7 @@ const ESTADO_A = JSON.parse(`{"pedido_do_usuario":"marca a tarefa \\"Revisar PR\
 
 test('igualdade A: catálogo com prefetch+enum+candidatos de aspas — montarPerguntas byte-idêntico', () => {
   const catalogoA = aplicarEstrategiasDeCandidatos(catalogoOriginalA, { pedido: pedidoA });
-  const q = montarPerguntas({ catalogo: catalogoA, candidatos: { criar_tarefa: { titulo: [['t1', 'Revisar PR'], ['t2', 'Outra']] } } });
+  const q = montarPerguntas({ assistente: 'assistente pessoal Igris', catalogo: catalogoA, candidatos: { criar_tarefa: { titulo: [['t1', 'Revisar PR'], ['t2', 'Outra']] } } });
   assert.deepEqual(q, PERGUNTAS_A);
 });
 
@@ -51,7 +51,7 @@ const PERGUNTAS_B = JSON.parse(`{"next_tool":{"type":"choice","instructions":"Vo
 const ESTADO_B = JSON.parse(`{"pedido_do_usuario":"p","data_hora":null,"anexos_desta_mensagem":[],"powers_ativos":[],"candidatos_do_roteamento":[],"memoria_de_trabalho":["m1","m2"],"contexto_dos_powers":{"okapp":"bloco"},"regras_dos_powers_ativos":{"okapp":"Regra do okapp"},"conversa_anterior":[],"acoes_ja_executadas":[],"o_que_o_assistente_ja_disse":[],"_cortes":[]}`);
 
 test('igualdade B: contribuições de power — montarPerguntas byte-idêntico', () => {
-  const q = montarPerguntas({ catalogo: catalogoB, perguntasDosPowers: perguntasDosPowersB });
+  const q = montarPerguntas({ assistente: 'assistente pessoal Igris', catalogo: catalogoB, perguntasDosPowers: perguntasDosPowersB });
   assert.deepEqual(q, PERGUNTAS_B);
 });
 
@@ -67,7 +67,7 @@ const catalogoC = [{ name: 'x', power: 'px', desc: 'X.' }];
 const PERGUNTAS_C = JSON.parse(`{"next_tool":{"type":"choice","instructions":"Você roteia o assistente pessoal Igris. Dado o pedido do usuário, o contexto dos powers e da sessão (o mesmo que o assistente vê), a conversa anterior, as ações já executadas (com resultados) e o que o assistente já disse, qual tool deve ser chamada EM SEGUIDA? Exatamente uma. Consulte antes de agir, honre condições, nunca repita ação já bem-sucedida com os mesmos argumentos. Se o assistente já tem no contexto o que precisa para responder, ou nada do catálogo se aplica, escolha respond_to_user. Ignore a escrita de memória de trabalho (mt_*): não é uma ação pedida pelo usuário.","criteria":{"respond_to_user":"Nenhuma tool é necessária agora: o pedido já está atendido pelas ações executadas, ou se responde com o que já está no contexto. O assistente escreve a resposta final.","x":"X. (power: px)"}},"pronto":{"type":"noul","instructions":"O assistente já tem, no contexto atual (blocos dos powers, resultados das ações executadas, conversa), tudo o que precisa para responder ao usuário agora, sem chamar mais nenhuma tool.","criteria":{"true":"nada falta buscar: responde com o que já está no contexto","false":"ainda falta executar ou consultar algo para atender o pedido"}}}`);
 
 test('igualdade C: catálogo simples — montarPerguntas byte-idêntico', () => {
-  const q = montarPerguntas({ catalogo: catalogoC });
+  const q = montarPerguntas({ assistente: 'assistente pessoal Igris', catalogo: catalogoC });
   assert.deepEqual(q, PERGUNTAS_C);
 });
 
@@ -107,4 +107,12 @@ test('igualdade C: estado grande que força corte — montarEstado byte-idêntic
   };
   assert.deepEqual(s, esperado);
   assert.ok(JSON.stringify(s).length <= 4000);
+});
+
+test('assistente: o padrão é neutro (sem Igris) e só o nome muda o texto do next_tool', () => {
+  const neutro = montarPerguntas({ catalogo: catalogoC }).next_tool.instructions;
+  const igris = montarPerguntas({ assistente: 'assistente pessoal Igris', catalogo: catalogoC }).next_tool.instructions;
+  assert.ok(!/igris/i.test(neutro));
+  assert.ok(neutro.startsWith('Você roteia o assistente pessoal. Dado o pedido'));
+  assert.equal(igris.replace('assistente pessoal Igris', 'assistente pessoal'), neutro);
 });

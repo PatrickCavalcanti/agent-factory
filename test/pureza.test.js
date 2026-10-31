@@ -135,12 +135,20 @@ export function analisar(src, arquivoAbs) {
   };
   achar(/@igris\//g, 'referência a @igris/');
   achar(/IGRIS_/g, 'texto IGRIS_');
-  achar(/process\s*\.\s*env\b/g, 'process.env');
+  // Ambiente do processo, em todas as formas: `process.env`, `process?.env`, `process['env']`, e desestruturação
+  // (`const { env } = process`, `{ env: e } = process`, também com valor padrão ou outras chaves ao lado).
+  achar(/process\s*\??\s*\.\s*env\b/g, 'process.env');
+  achar(/process\s*(?:\?\.\s*)?\[\s*(['"`])env\1\s*\]/g, "process['env']");
+  achar(/\{(?:[^{}]|\{[^{}]*\})*\benv\b(?:[^{}]|\{[^{}]*\})*\}\s*=\s*(?:globalThis\s*\.\s*)?process\b(?!\s*[.\[])/g, 'desestruturação de process.env');
 
-  const reImport = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])([^'"\n]+)\1/g;
-  for (const m of codigo.matchAll(reImport)) {
-    const espec = m[2];
-    const linha = linhaDe(codigo, m.index);
+  // `new URL('../..', import.meta.url)` que resolva para fora da raiz do pacote (relativo ao arquivo analisado).
+  for (const m of codigo.matchAll(/new\s+URL\s*\(\s*(['"`])([^'"`\n]+)\1\s*,\s*import\.meta\.url/g)) {
+    if (!m[2].startsWith('.') && !m[2].startsWith('/')) continue;
+    const rel = path.relative(raiz, path.resolve(path.dirname(arquivoAbs), m[2]));
+    if (rel.startsWith('..') || path.isAbsolute(rel)) v.push({ linha: linhaDe(codigo, m.index), motivo: `new URL sai da raiz do pacote: ${m[2]}` });
+  }
+
+  const verificarEspec = (espec, linha) => {
     if (espec.startsWith('.') || espec.startsWith('/')) {
       const alvo = path.resolve(path.dirname(arquivoAbs), espec);
       const rel = path.relative(raiz, alvo);
@@ -149,9 +157,19 @@ export function analisar(src, arquivoAbs) {
       // ok
     } else {
       const nome = nomeDoPacote(espec);
-      if (nativos.has(nome) || nativos.has(espec)) continue;
+      if (nativos.has(nome) || nativos.has(espec)) return;
       if (!declarados.has(nome)) v.push({ linha, motivo: `pacote não declarado em dependencies/peerDependencies: ${espec}` });
     }
+  };
+
+  const reImport = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)(['"])([^'"\n]+)\1/g;
+  for (const m of codigo.matchAll(reImport)) verificarEspec(m[2], linhaDe(codigo, m.index));
+
+  // `createRequire(...)('x')` direto, ou via a variável que recebeu o `createRequire(...)` (`req('x')`, `req.resolve('x')`).
+  for (const m of codigo.matchAll(/createRequire\s*\([^()]*\)\s*(?:\.\s*resolve\s*)?\(\s*(['"`])([^'"`\n]+)\1/g)) verificarEspec(m[2], linhaDe(codigo, m.index));
+  for (const d of codigo.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\w+\s*\.\s*)?createRequire\s*\(/g)) {
+    const re = new RegExp(`\\b${d[1].replace(/\$/g, '\\$')}\\s*(?:\\.\\s*resolve\\s*)?\\(\\s*(['"\`])([^'"\`\\n]+)\\1`, 'g');
+    for (const m of codigo.matchAll(re)) verificarEspec(m[2], linhaDe(codigo, m.index));
   }
   return v;
 }
@@ -240,4 +258,56 @@ test('scanner: detecta cada forma de violação com a linha certa', () => {
   assert.deepEqual([...new Set(linhas)].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6]);
   assert.ok(r.some((x) => x.linha === 6 && /lodash/.test(x.motivo)));
   assert.ok(!r.some((x) => x.linha >= 7));
+});
+
+test('scanner: process.env em todas as formas (acesso por colchete, optional chaining, desestruturação)', () => {
+  const f = path.join(raiz, 'orquestrador/src/x.js');
+  const casos = [
+    ["const a = process['env'].X;", true],
+    ['const a = process["env"].X;', true],
+    ['const a = process[`env`].X;', true],
+    ['const a = process?.env?.X;', true],
+    ['const { env } = process;', true],
+    ['const { env: e } = process;', true],
+    ['const { pid, env = {} } = process;', true],
+    ['let env; ({ env } = process);', true],
+    ['const { env } = globalThis.process;', true],
+    // não são violação
+    ['const { pid } = process;', false],
+    ['const { env } = opcoes;', false],
+    ['const { env } = process.versions;', false],
+    ["const a = process['pid'];", false],
+    ['const envio = 1; // process.env', false],
+  ];
+  for (const [src, viola] of casos) {
+    const r = analisar(src, f);
+    assert.equal(r.length > 0, viola, `${src} → ${JSON.stringify(r)}`);
+  }
+});
+
+test('scanner: new URL(..., import.meta.url) que sai da raiz do pacote', () => {
+  const f = path.join(raiz, 'orquestrador/src/x.js');
+  const r = analisar("const u = new URL('../../..', import.meta.url);", f);
+  assert.equal(r.length, 1);
+  assert.match(r[0].motivo, /new URL sai da raiz/);
+  assert.equal(analisar("const u = new URL('../../../fora.json', import.meta.url);", f).length, 1);
+  // dentro da raiz, ou URL absoluta/outra base: ok
+  assert.equal(analisar("const u = new URL('../dados.json', import.meta.url);", f).length, 0);
+  assert.equal(analisar("const u = new URL('./dados.json', import.meta.url);", f).length, 0);
+  assert.equal(analisar("const u = new URL('https://x.com/a', import.meta.url);", f).length, 0);
+  assert.equal(analisar("const u = new URL('../../..', base);", f).length, 0);
+});
+
+test('scanner: createRequire(...)(espec) — direto ou via variável — segue as mesmas regras de import', () => {
+  const f = path.join(raiz, 'orquestrador/src/x.js');
+  const pre = "import { createRequire } from 'node:module';\n";
+  const direto = analisar(`${pre}const x = createRequire(import.meta.url)('../../..');`, f);
+  assert.equal(direto.length, 1);
+  assert.match(direto[0].motivo, /sai da raiz/);
+  const viaVar = analisar(`${pre}const req = createRequire(import.meta.url);\nconst x = req('../../../fora.js');\nconst y = req.resolve('lodash');`, f);
+  assert.deepEqual(viaVar.map((x) => x.linha), [3, 4]);
+  assert.match(viaVar[0].motivo, /sai da raiz/);
+  assert.match(viaVar[1].motivo, /lodash/);
+  // permitido: relativo dentro da raiz, pacote declarado, builtin
+  assert.equal(analisar(`${pre}const req = createRequire(import.meta.url);\nreq('../src/y.js'); req('zod'); req('node:fs');`, f).length, 0);
 });
