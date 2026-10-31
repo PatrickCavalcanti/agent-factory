@@ -454,6 +454,23 @@ const IDENTIDADE = (_nome, definicao) => definicao;
 const META_TOOLS = ['load_capability', 'call_capability', 'search_capabilities'];
 
 /**
+ * Texto que o genos anexa a `Unknown tool '<nome>'` (`unknownToolMessage`).
+ * No protocolo nativo só as três meta-tools são registradas, mas o índice do
+ * prompt mostra o nome exposto (`<capacidade>__<tool>`) e o modelo às vezes o
+ * chama direto — e recebia só "not registered in this run". Nome que não é de
+ * catálogo (não-string, meta-tool, sem `__`) → `undefined` (mensagem padrão).
+ * (Do Ariadne 1901880d.)
+ * @param {unknown} toolName
+ * @returns {string|undefined}
+ */
+export function mensagemDeToolDesconhecida(toolName) {
+  if (typeof toolName !== 'string' || META_TOOLS.includes(toolName) || !toolName.includes('__')) return undefined;
+  return `"${toolName}" é uma função do catálogo e não se chama pelo nome direto. ` +
+    `Chame call_capability com { "ref": "${toolName}", "args": { ... } } — ` +
+    `use load_capability com essa ref antes, se ainda não leu o manual dela.`;
+}
+
+/**
  * Q4 (correção do review de qualidade da Fase 2): teto do texto agregado de
  * `enriquecimentoDasFontes.join('\n')` antes de virar o embed 2 — sem ele, N fontes
  * `enriquecer`iam sem limite e o embed 2 pagaria um texto arbitrariamente grande (custo de
@@ -3931,6 +3948,9 @@ export function criarOrquestrador(config) {
       initialMessages: payload.mensagens,
       toolProtocol: estrategia.toolProtocol,
       outputMode,
+      // Só onde as capacidades NÃO são registradas (nativo): lá a porta é `call_capability`.
+      // Em envelope/fence o nome direto é a porta, e o texto mentiria.
+      ...(estrategia.registraCapacidades === false ? { unknownToolMessage: ({ toolName }) => mensagemDeToolDesconhecida(toolName) } : {}),
       maxIterations: maxIteracoes,
       formatUserMessages: formatarELembrar,
       ...(config.validateTurn ? { validateTurn: config.validateTurn } : {}),
