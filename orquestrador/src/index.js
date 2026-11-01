@@ -109,6 +109,9 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   mantém).
  * @property {'envelope'|'fence'|'nativo'} protocolo
  * @property {object} [protocoloOpts] repassado à estratégia (ex.: { headless }).
+ * @property {boolean} [mecanicaNoCatalogo] Default `false`. `true` = a mecânica de chamada sai do topo do system e vive no
+ *   bloco de capacidades (legenda por protocolo; no nativo, `<function ref="…">` e sem seção de protocolo), e o registro
+ *   de operações do turno sai em forma neutra. Veio do Ariadne (`fc2457a8`, `b7bec589`). Só com o layout `agrupado`.
  *   Em `envelope` aceita também `prefixoDoEnvelope` (string, padrão ausente): prefixo do
  *   NOME do schema de resposta enviado ao provider — sem ele `envelope`,
  *   `envelope_headless`, `envelope_contribuicoes`; com ele `<prefixo>_envelope*`. O Igris
@@ -506,10 +509,15 @@ const TETO_ENRIQUECIMENTO_CHARS = 2000;
  * escolheu: "vai entrar no prompt através do prompt do protocolo de tool
  * calls".
  *
+ * Com `mecanicaNoCatalogo`, a seção do nativo é nula: a legenda do catálogo já
+ * ensina carregar e executar, colada nos itens (Ariadne `b7bec589`); envelope e
+ * fence ganham a linha "chame direto" no começo.
+ *
  * @param {{nome: string, conteudo: string}|null} secao
  * @param {{tools: Map<string, object>}} bridge
+ * @param {{estrategia?: import('./protocolo/index.js').EstrategiaDeProtocolo, mecanicaNoCatalogo?: boolean}} [opts]
  */
-function comoCarregarNoProtocolo(secao, bridge) {
+function comoCarregarNoProtocolo(secao, bridge, { estrategia, mecanicaNoCatalogo = false } = {}) {
   // Protocolo sem secao invariante nao recebe o paragrafo. Hoje os tres tem
   // secao — `nativo` passou a ter quando deixou de registrar as capacidades no
   // registry: sem schema nativo, o unico lugar que ensina a chamar e o texto.
@@ -525,11 +533,17 @@ function comoCarregarNoProtocolo(secao, bridge) {
     );
   }
 
+  // No nativo com a mecânica no catálogo, a legenda do catálogo concentra a orientação de execução.
+  if (mecanicaNoCatalogo && estrategia?.registraCapacidades === false) return null;
+
   return {
     ...secao,
     conteudo: [
       secao.conteudo,
       '',
+      ...(mecanicaNoCatalogo
+        ? ['Função com manual disponível: chame direto pelo nome exato do catálogo. Não peça o manual de novo.', '']
+        : []),
       'Três funções movem o catálogo de capacidades:',
       '',
       '- `load_capability({ refs })` — traz o manual completo de funções listadas como',
@@ -1183,9 +1197,13 @@ export function criarOrquestrador(config) {
 
   // O protocolo vem ANTES das seções do perfil de propósito: é a parte que
   // menos muda de todas, e o prompt-builder monta o system por volatilidade
-  // crescente — o que muda menos fica mais no topo.
+  // crescente — o que muda menos fica mais no topo. Com `mecanicaNoCatalogo`,
+  // identidade e comportamento abrem o system e a mecânica vai para o catálogo.
+  const mecanicaNoCatalogo = config.mecanicaNoCatalogo === true;
+  const estrategia = resolverProtocolo(config.protocolo, config.protocoloOpts);
   const construtor = criarConstrutorDePrompt({
     base: (ctx) => [...(ctx.__secoesExtra || []), ...config.base(ctx)],
+    ...(mecanicaNoCatalogo ? { mecanicaNoCatalogo: true, estrategia } : {}),
     ...(config.legendas ? { legendas: config.legendas } : {}),
     ...(config.nomes ? { nomes: config.nomes } : {}),
     // Estabilização do cache (spec 2026-10-15): o host escolhe o layout do bloco de capacidades
@@ -1193,7 +1211,6 @@ export function criarOrquestrador(config) {
     ...(config.layoutDasCapacidades ? { layoutDasCapacidades: config.layoutDasCapacidades } : {}),
     ...(config.prioridadeDasCapacidades !== undefined ? { prioridadeDasCapacidades: config.prioridadeDasCapacidades } : {}),
   });
-  const estrategia = resolverProtocolo(config.protocolo, config.protocoloOpts);
   const decorar = config.decorarTool || IDENTIDADE;
   // Cauda efêmera / despejo (spec 2026-10-29): `config.despejo` ausente ou inválido = padrão (tudo desligado).
   // Motivos de normalização saem uma vez, na criação — nunca derrubam o orquestrador.
@@ -3639,10 +3656,12 @@ export function criarOrquestrador(config) {
 
     // A seção do protocolo é FIXA: entra no topo do system, junto das seções do
     // perfil, e nunca invalida nada.
-    const secaoProtocolo = comoCarregarNoProtocolo(estrategia.secaoInvariante(), bridge);
+    const secaoProtocolo = comoCarregarNoProtocolo(estrategia.secaoInvariante(), bridge, { estrategia, mecanicaNoCatalogo });
     // O contexto do prompt é UM só: a conta do despejo e o `montar` leem o mesmo, senão a conta mediria um system
-    // que não é o enviado (a seção do protocolo entra no topo do system).
-    const contextoDoPrompt = { ...ctx, __secoesExtra: secaoProtocolo ? [secaoProtocolo] : [] };
+    // que não é o enviado (a seção do protocolo entra no topo do system — ou no catálogo, com `mecanicaNoCatalogo`).
+    const contextoDoPrompt = mecanicaNoCatalogo
+      ? { ...ctx, __secoesExtra: [], __instrucoesDeCapacidades: secaoProtocolo?.conteudo || '' }
+      : { ...ctx, __secoesExtra: secaoProtocolo ? [secaoProtocolo] : [] };
 
     // Despejo em lote (spec 2026-10-29 §5): o que o modelo não usou há mais de X mensagens sai do system, numa
     // quebra de cache só, quando a conta compensa. Roda DEPOIS do `acumular` (que decide o que está no system) e

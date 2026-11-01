@@ -3,6 +3,18 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.0] — 2026-11-01
+
+### Adicionado
+
+- **`mecanicaNoCatalogo`** (opção de `criarOrquestrador` e de `criarConstrutorDePrompt`, padrão `false`):
+  porta do Ariadne `fc2457a8` + `b7bec589`. A mecânica de chamada sai do topo do system e vive no
+  bloco de capacidades, escrita pela estratégia de protocolo; no `nativo` o manual sai como
+  `<function ref="…">` e não há seção de protocolo (a legenda ensina `call_capability`/`load_capability`);
+  o registro de operações do turno sai em forma neutra (`Operação executada | referência: … |
+  argumentos: … | resultado: …`). Só no layout `agrupado` (outro layout é recusado na montagem).
+  Desligada, o prompt é byte a byte o de antes — o Igris não muda. Teste: `orquestrador/test/mecanica-no-catalogo.test.js`.
+
 ## [0.1.0] — 2026-10-31
 
 Primeira versão: a fábrica do Igris como biblioteca própria.

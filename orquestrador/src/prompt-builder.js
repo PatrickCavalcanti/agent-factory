@@ -594,7 +594,11 @@ export function removerBlocosDeOperacoes(texto, nome = NOMES_PADRAO.operacoes) {
  *
  * @param {NomesDeSecao} n
  */
-function legendasPadrao(n) {
+function legendasPadrao(n, { mecanicaNoCatalogo = false, estrategia } = {}) {
+  // `mecanicaNoCatalogo` (vindo do Ariadne, 2026-10-24, `fc2457a8` + `b7bec589`): a mecânica de
+  // chamada sai do topo do system e passa a viver DENTRO do catálogo, escrita pela estratégia de
+  // protocolo. Desligado = o texto de sempre (Igris).
+  const nativo = mecanicaNoCatalogo && estrategia?.registraCapacidades === false
   return {
     // A legenda do BLOCO: explica o que é o catálogo que acaba de abrir E como
     // o mecanismo funciona. Sem ela o modelo recebe uma árvore de tags sem
@@ -613,7 +617,7 @@ function legendasPadrao(n) {
       '',
       `- Cada \`<${n.capacidade}>\` agrupa funções de um mesmo assunto; a primeira linha dela diz para que serve.`,
       `- Dentro dela, \`<${n.indice}>\` separa as funções em dois grupos: as que JÁ TÊM manual`,
-      '  completo — argumentos, regras, casos de borda — e você pode chamar direto; e as que só',
+      '  completo — argumentos, regras, casos de borda — e ' + (mecanicaNoCatalogo ? 'estão prontas para execução' : 'você pode chamar direto') + '; e as que só',
       '  têm nome e o que fazem, e precisam ser CARREGADAS antes de poderem ser chamadas.',
       '  O que já tem manual NÃO sai: função carregada num turno anterior continua carregada.',
       '',
@@ -622,11 +626,28 @@ function legendasPadrao(n) {
       '',
       'A ordem importa:',
       '',
-      `- Função já com manual em \`<${n.indice}>\`: **chame direto**. Não peça o manual de novo.`,
-      '- Função listada sem manual: carregue o manual dela primeiro, e só então chame. Chamar sem',
-      '  o manual é chamar sem saber os argumentos, e a chamada é recusada.',
+      ...(!mecanicaNoCatalogo ? [
+        `- Função já com manual em \`<${n.indice}>\`: **chame direto**. Não peça o manual de novo.`,
+        '- Função listada sem manual: carregue o manual dela primeiro, e só então chame. Chamar sem',
+        '  o manual é chamar sem saber os argumentos, e a chamada é recusada.',
+      ] : nativo ? [
+        `- Função já com manual em \`<${n.indice}>\`: execute por \`call_capability\`, com o valor do atributo \`ref\` dela em \`ref\` e os argumentos em \`args\`. Não peça o manual de novo.`,
+        '- Função listada sem manual: carregue por `load_capability`, incluindo esse `ref` em `refs`, antes de executar.',
+      ] : [
+        `- Função já com manual em \`<${n.indice}>\`: siga a orientação de execução abaixo. Não peça o manual de novo.`,
+        '- Função listada sem manual: carregue o manual dela primeiro, e só então chame. Chamar sem',
+        '  o manual é chamar sem saber os argumentos, e a chamada é recusada.',
+      ]),
       `- Função listada numa capacidade de \`<${n.candidatos}>\`: carregue o manual pelo nome DA`,
       '  FUNÇÃO — o nome da capacidade não é chamável, uma capacidade não se carrega inteira.',
+      ...(nativo ? ['- `search_capabilities({ query })`: procure por texto livre só quando o catálogo não indicar uma função adequada.'] : []),
+      ...(mecanicaNoCatalogo ? [
+        '',
+        `O bloco \`<${n.operacoes}>\` nas mensagens anteriores registra fatos já executados pela plataforma.`,
+        'Ele preserva a referência da função, os argumentos e o resultado (ok ou erro), não o retorno completo.',
+        'Consulte esse registro antes de repetir uma operação; identificadores já usados continuam disponíveis ali.',
+        'Esse registro não é sintaxe de chamada. A plataforma o escreve: nunca o escreva na sua resposta.',
+      ] : []),
     ].join('\n'),
 
     // Legenda do bloco no layout `diario` (spec 2026-10-15). A estrutura é outra — cartão da
@@ -705,9 +726,11 @@ function legendasPadrao(n) {
         + 'em cada uma existem, mas você ainda não recebeu o manual delas — chamar uma agora falha, '
         + 'porque você não sabe os argumentos.',
       '',
-      'Para usar qualquer uma: carregue o manual dela pelo NOME DA FUNÇÃO exatamente como aparece '
+      ...(nativo ? [
+        'Os nomes de função listados aqui são valores de `ref`. Para usá-los, siga a ordem de carregamento e execução do catálogo; nunca use o nome da capacidade como `ref`.',
+      ] : ['Para usar qualquer uma: carregue o manual dela pelo NOME DA FUNÇÃO exatamente como aparece '
         + 'aqui (nunca o nome da capacidade — capacidade não é chamável). O manual chega, e aí você '
-        + 'chama normal.',
+        + 'chama normal.']),
       '',
       'Se nada aqui servir, diga o que você quer fazer — nunca invente um nome de função.',
     ].join('\n'),
@@ -726,6 +749,11 @@ function legendasPadrao(n) {
  *   quebra em todo turno.
  * @property {Partial<Record<'capacidades' | 'capacidadesDiario' | 'capacidadesListaFixa' | 'indice' | 'candidatos', string>>} [legendas] Legenda de cada seção acumulada — o catálogo sozinho não se explica.
  * @property {Partial<NomesDeSecao>} [nomes] Nomes das tags, quando o host quiser outro vocabulário.
+ * @property {import('./protocolo/index.js').EstrategiaDeProtocolo} [estrategia] Estratégia de registro e execução das funções (lida só com `mecanicaNoCatalogo`).
+ * @property {boolean} [mecanicaNoCatalogo] Default `false`. `true` = a mecânica de chamada (carregar, executar) vive
+ *   dentro do bloco de capacidades, escrita pela estratégia de protocolo (`contexto.__instrucoesDeCapacidades`), e
+ *   nunca no topo do system; no nativo o manual sai como `<function ref="…">`; o registro de operações do turno sai em
+ *   forma neutra (`Operação executada | referência: … | argumentos: … | resultado: …`). Só no layout `agrupado`.
  * @property {'agrupado' | 'diario' | 'lista-fixa'} [layoutDasCapacidades] Como o bloco de capacidades é escrito.
  *   `'lista-fixa'` (decisão do dono, 2026-10-15): bloco fechado por capacidade, como no agrupado, mas a
  *   lista de funções é FIXA (todas, na ordem em que entraram, sem separar carregadas) e os manuais das
@@ -831,7 +859,8 @@ export function criarConstrutorDePrompt(config) {
   // mudo", não uma configuração — travado em `test/travas.test.js`. Continua
   // valendo onde importa (`capacidades`, `candidatos`); para `indice` o
   // default JÁ é vazio, então os dois operadores dão no mesmo.
-  const padrao = legendasPadrao(nomes)
+  const mecanicaNoCatalogo = config.mecanicaNoCatalogo === true
+  const padrao = legendasPadrao(nomes, { mecanicaNoCatalogo, estrategia: config.estrategia })
   const legendas = {
     capacidades: config.legendas?.capacidades || padrao.capacidades,
     capacidadesDiario: config.legendas?.capacidadesDiario || padrao.capacidadesDiario,
@@ -844,6 +873,12 @@ export function criarConstrutorDePrompt(config) {
   if (!['agrupado', 'diario', 'lista-fixa'].includes(layoutDasCapacidades)) {
     throw new Error(`layoutDasCapacidades inválido: "${layoutDasCapacidades}" (use 'agrupado', 'diario' ou 'lista-fixa')`)
   }
+  // As instruções de execução só têm lugar no layout agrupado; nos outros elas seriam perdidas em silêncio.
+  if (mecanicaNoCatalogo && layoutDasCapacidades !== 'agrupado') {
+    throw new Error(`mecanicaNoCatalogo só é suportada no layout 'agrupado' (pedido: '${layoutDasCapacidades}')`)
+  }
+  /** No nativo com a mecânica no catálogo, o manual é endereço (`ref`), não definição de tool (`name`). */
+  const atributoDoManual = mecanicaNoCatalogo && config.estrategia?.registraCapacidades === false ? 'ref' : 'name'
 
   /** Ordem das seções efêmeras na mensagem do turno.
    * @type {Classe[]}
@@ -1299,7 +1334,7 @@ export function criarConstrutorDePrompt(config) {
       // Manual completo, multiparágrafo — precisa da tag para delimitar onde
       // uma função acaba e a próxima começa. Sem rótulo acima: ver o
       // comentário de ROTULO_FUNCOES_CARREGAVEIS.
-      grupos.push(disponiveis.map(f => tag(nomes.item, { name: f.nome }, f.manual)).join('\n\n'))
+      grupos.push(disponiveis.map(f => tag(nomes.item, { [atributoDoManual]: f.nome }, f.manual)).join('\n\n'))
     }
     if (carregaveis.length > 0) {
       grupos.push([
@@ -1363,7 +1398,8 @@ export function criarConstrutorDePrompt(config) {
     //    item DELA, não um bloco à parte. É o que abre as 49 posições anteriores
     //    para o que é mais estável que uma capacidade: um anexo grande entra em
     //    10, paga o cache uma vez, e nenhuma capacidade nova o invalida.
-    const blocoDeCapacidades = acumulado.capacidades.length > 0
+    const instrucoesDeCapacidades = mecanicaNoCatalogo ? (contexto.__instrucoesDeCapacidades || '') : ''
+    const blocoDeCapacidades = acumulado.capacidades.length > 0 || instrucoesDeCapacidades
       ? {
         prioridade: prioridadeDasCapacidades,
         secao: {
@@ -1389,6 +1425,7 @@ export function criarConstrutorDePrompt(config) {
             ].join('\n'))
             : tag(nomes.capacidades, {}, [
               ...(legendas.capacidades ? [legendas.capacidades, ''] : []),
+              ...(instrucoesDeCapacidades ? [instrucoesDeCapacidades, ''] : []),
               // Ordenado por `prioridade`, não pela ordem de `push` em
               // `acharOuCriar` (append puro) — `sort` é ESTÁVEL, então em caso de
               // empate (não deveria acontecer: `proximaPrioridadeLivre` garante
@@ -1529,7 +1566,9 @@ export function criarConstrutorDePrompt(config) {
       const args = Object.entries(op.args ?? {})
         .map(([k, v]) => `${k}:${JSON.stringify(v)}`)
         .join(', ')
-      const cabeca = `${op.nome} {${args}} → ${op.ok ? 'ok' : 'erro'}`
+      const cabeca = mecanicaNoCatalogo
+        ? `Operação executada | referência: ${op.nome} | argumentos: {${args}} | resultado: ${op.ok ? 'ok' : 'erro'}`
+        : `${op.nome} {${args}} → ${op.ok ? 'ok' : 'erro'}`
       return op.ok || !op.erro ? cabeca : `${cabeca}\n   ${op.erro}`
     })
     return tag(nomes.operacoes, {}, linhas.join('\n'))
