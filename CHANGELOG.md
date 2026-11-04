@@ -3,6 +3,44 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.1] — 2026-11-03
+
+### Corrigido
+
+- **Registro de operações do turno marcava `ok` a função que devolve recusa sem lançar.** O genos emite
+  `tool.completed` sempre que o handler retorna (o evento não traz o retorno), e o dispatcher do kairos
+  devolve `{ ok: true, result }` mesmo quando o handler devolve `{ ok: false }`. Resultado: `operacoes`, o
+  bloco `<turn_operations>` e o `aoChamada` (`fase: 'fim'`) diziam `ok`/`resultado: ok` para uma recusa
+  (caso medido: `pipeline__abrir_pedido` recusado por falta de autorização, registrado como `ok`). Agora o
+  retorno de cada chamada é observado (por fora do `decorarTool`) e passa por `falhaDoResultado` — a mesma
+  regra do loop do Jev, sem segunda heurística; pela meta-tool `call_capability` o retorno é desembrulhado do
+  envelope do dispatcher (`result`) antes. A falha sai com `ok: false` e o motivo em `erro`, cortado em
+  300 caracteres (entra no bloco e no histórico de todo turno seguinte). Handler de sucesso segue `ok`.
+- **`falhaDoResultado` lê mais formas de motivo.** Além de `error` e `reason`, agora `erro`, `mensagem`, `message`, `motivo`
+  (primeira string encontrada, no objeto ou aninhada) e `code` como último recurso; `{ ok: false, faltas }` segue
+  sem texto (`ok: false`). Retorno MCP `{ isError: true, content }` também é falha: vale o primeiro item de texto do `content`; se for
+  JSON com motivo (`{"ok":false,"error":{"message":"…"}}`), o motivo do JSON; senão, o texto. Vale para o loop do Jev também, que usa a mesma função.
+- **Linha do kairos no `load_capability`.** Quando o kairos terminar o retorno com `Para executar: call_capability, com ref = o nome do cabeçalho (##) e args = os parâmetros.`, a fábrica ajusta por protocolo: no nativo
+  (`registraCapacidades === false`) acrescenta "Não chame pelo nome direto."; em envelope/fence remove a linha (lá o
+  nome direto é a porta). Testado com a linha real do kairos `0.841.261103` (devDependency subida de `^0.841.261021`) em nativo, envelope e fence.
+
+### Adicionado
+
+- **`aoChamada` (`fase: 'fim'`) ganha o campo aditivo `desfecho`**: `'concluiu'`, `'recusa'` (o handler devolveu a
+  recusa) ou `'lancou'` (exceção, `tool.failed`). Os campos atuais não mudam, mas `ok: false` agora também vale
+  para recusa devolvida: host que lia `ok === false` como "lançou" (ex.: `tool_threw`) deve olhar `desfecho`.
+
+### Comportamento que muda por consequência
+
+- Função recusada deixa de contar como "usada" no registro de uso do despejo (`usosDoTurno` ignora `!op.ok`) e
+  `consultasDoTurnoDe` (apoio) passa a devolver `ok: false` para consulta recusada.
+
+### Pendências
+
+- `recusaSemManual` (`manual_nao_carregado`, devolve `{ erro, mensagem }` sem `ok: false`) segue `ok` no
+  histórico e em `aoChamada`; só o conjunto `recusadas` a distingue (para o registro de uso). Tornar essa recusa
+  uma falha do registro é decisão de comportamento, fora desta versão.
+
 ## [0.2.0] — 2026-11-01
 
 ### Adicionado

@@ -1170,6 +1170,26 @@ export async function recalcularCatalogo(config) {
   return aquecerCatalogo(config);
 }
 
+/** Teto, em caracteres, do motivo de recusa que `falhaDoRetorno` entrega ao registro de operações. */
+const TETO_DO_MOTIVO = 300;
+
+/**
+ * `falhaDoResultado` sobre o que a tool devolveu ao genos, para o registro de operações do turno. Pela meta-tool
+ * `call_capability` o retorno vem no envelope do dispatcher do kairos — `{ ok: true, result }` mesmo quando o handler
+ * devolveu `{ ok: false }` (dispatch.js: `return { ok: true, result }`) —, então o resultado do handler está em
+ * `result`. Envelope com `ok: false` (ref inexistente, permissão, argumento inválido) `falhaDoResultado` já enxerga.
+ * @param {string} toolName nome com que a tool foi registrada/chamada no genos
+ * @param {unknown} retorno
+ * @returns {string|null}
+ */
+function falhaDoRetorno(toolName, retorno) {
+  const envelopado = toolName === 'call_capability'
+    && retorno && typeof retorno === 'object' && retorno.ok === true && 'result' in retorno;
+  const motivo = falhaDoResultado(envelopado ? retorno.result : retorno);
+  // O motivo entra no bloco de operações e no histórico de todo turno seguinte: um retorno longo (prosa, JSON) não pode inchá-los.
+  return motivo !== null && motivo.length > TETO_DO_MOTIVO ? `${motivo.slice(0, TETO_DO_MOTIVO - 1)}…` : motivo;
+}
+
 /**
  * A-I6 — aviso com que o turno TERMINA quando o laço agêntico estoura `maxIteracoes`
  * (o genos lança `Max iterations exceeded (N)`). Mesmo texto da V1
@@ -2029,10 +2049,27 @@ export function criarOrquestrador(config) {
     return blocos.length ? `${blocos.join('\n\n')}\n\n${texto}` : texto;
   }
 
+  /**
+   * Linha final do `load_capability` nos kairos novos: manda executar por `call_capability`, sem nome real. Só é verdade
+   * onde as capacidades NÃO estão registradas (nativo, `registraCapacidades === false`): lá o nome direto não existe e a
+   * porta é `call_capability` (a legenda e `unknownToolMessage` dizem o mesmo). Em envelope/fence o nome direto é a porta,
+   * e a linha mentiria — sai do retorno.
+   */
+  function linhaDeExecucaoDoKairos(texto) {
+    if (typeof texto !== 'string') return texto;
+    const ehLinha = (l) => /^Para executar: call_capability\b/.test(l.trim());
+    const linhas = texto.split('\n');
+    if (!linhas.some(ehLinha)) return texto;
+    if (estrategia.registraCapacidades === false) {
+      return linhas.map((l) => (ehLinha(l) && !l.includes('Não chame pelo nome direto') ? l.replace(/\s+$/, '') + ' Não chame pelo nome direto.' : l)).join('\n');
+    }
+    return linhas.filter((l) => !ehLinha(l)).join('\n').replace(/\s+$/, '');
+  }
+
   /** Manual do `load_capability` (texto do kairos): troca o cabeçalho `## <provider>__<key>` pelo nome exposto da fábrica. */
   function manualComNomeExposto(saida) {
     if (typeof saida !== 'string') return saida;
-    return saida.replace(/^## (\S+?)__(\S+)$/gm, (linha, providerId, key) => (
+    return linhaDeExecucaoDoKairos(saida).replace(/^## (\S+?)__(\S+)$/gm, (linha, providerId, key) => (
       prefixarPorCapacidade.has(providerId)
         ? `## ${nomeExposto(providerId, key, { prefixar: prefixarPorCapacidade.get(providerId) })}`
         : linha
@@ -2080,8 +2117,19 @@ export function criarOrquestrador(config) {
     return plano;
   }
 
-  function registryDoTurno(bridge, ctx, nomesComManual, registraCapacidades, manager, carregadasNoTurno, idsComInstrucoes = new Set(), recusadas = null) {
+  function registryDoTurno(bridge, ctx, nomesComManual, registraCapacidades, manager, carregadasNoTurno, idsComInstrucoes = new Set(), recusadas = null, aoRetornar = null) {
     const registry = new ToolRegistry();
+    // O genos emite `tool.completed` sempre que o handler RETORNA, e o evento não carrega o retorno. Este embrulho (por
+    // FORA da decoração do host: vê o que o genos vê) entrega o retorno de cada chamada a `aoRetornar`, para o registro
+    // de operações do turno distinguir recusa devolvida de sucesso. Só observa: devolve o mesmo valor, e o que lançar segue.
+    const observar = (nomeRegistrado, definicao) => (aoRetornar ? {
+      ...definicao,
+      handler: async (args, ctxDoGenos) => {
+        const retorno = await definicao.handler(args, ctxDoGenos);
+        aoRetornar(nomeRegistrado, retorno);
+        return retorno;
+      },
+    } : definicao);
     // Instruções de capacidade já entregues NESTE turno pelo `load_capability` (uma vez por capacidade).
     const instrucoesEntregues = new Set(idsComInstrucoes);
     // As meta-tools do bridge (`load_capability`, `search_capabilities`,
@@ -2140,7 +2188,7 @@ export function criarOrquestrador(config) {
           return saida;
         },
       };
-      registry.register(nome, decorar(nome, comCtx));
+      registry.register(nome, observar(nome, decorar(nome, comCtx)));
     }
     // As tools das capacidades entram TAMBÉM no registry do genos, sob o nome
     // exposto — é ele que o bloco de funções anuncia (atributo name=), e é
@@ -2213,8 +2261,8 @@ export function criarOrquestrador(config) {
         effect: tool.effect,
         handler: handlerSob(nomeDaChamada),
       });
-      registry.register(tool.nome, decorar(tool.nome, definicaoSob(tool.nome)));
-      if (tool.cru && porCru.get(tool.cru) === tool.nome) registry.register(tool.cru, decorar(tool.cru, definicaoSob(tool.cru)));
+      registry.register(tool.nome, observar(tool.nome, decorar(tool.nome, definicaoSob(tool.nome))));
+      if (tool.cru && porCru.get(tool.cru) === tool.nome) registry.register(tool.cru, observar(tool.cru, decorar(tool.cru, definicaoSob(tool.cru))));
     }
     return registry;
   }
@@ -3930,6 +3978,17 @@ export function criarOrquestrador(config) {
       return chamada;
     };
 
+    // Retorno da última chamada de cada tool, entre o retorno do handler e o `tool.completed`/`tool.failed` dela. O genos
+    // executa as chamadas em sequência, então um espaço por nome basta; o evento o consome.
+    const retornoDaChamada = new Map();
+    const guardarRetorno = (toolName, retorno) => { retornoDaChamada.set(toolName, retorno); };
+    const retirarRetorno = (toolName) => {
+      const tinha = retornoDaChamada.has(toolName);
+      const retorno = retornoDaChamada.get(toolName);
+      retornoDaChamada.delete(toolName);
+      return tinha ? { retorno } : null;
+    };
+
     const fechar = (toolName) => emAberto.get(toolName)?.shift()
       // Fim sem início casado não deveria acontecer; se acontecer, ganha linha
       // própria em vez de o evento sumir em silêncio.
@@ -3974,7 +4033,7 @@ export function criarOrquestrador(config) {
       // MEIO deste turno — ver o comentário no laço de `registryDoTurno` acima.
       // Gate (spec §4.3): terceira fonte de manual — as funções com manual na CAUDA deste turno executam
       // mesmo sem estar no system acumulado.
-      tools: registryDoTurno(bridge, ctx, new Set([...nomesComManualNoPrompt(acumulacao), ...nomesDaCauda(caudaDoTurno)]), estrategia.registraCapacidades, manager, carregadasNoTurno, idsComInstrucoesNoPrompt(acumulacao, caudaDoTurno), recusadasNoTurno),
+      tools: registryDoTurno(bridge, ctx, new Set([...nomesComManualNoPrompt(acumulacao), ...nomesDaCauda(caudaDoTurno)]), estrategia.registraCapacidades, manager, carregadasNoTurno, idsComInstrucoesNoPrompt(acumulacao, caudaDoTurno), recusadasNoTurno, guardarRetorno),
       initialMessages: payload.mensagens,
       toolProtocol: estrategia.toolProtocol,
       outputMode,
@@ -4036,12 +4095,23 @@ export function criarOrquestrador(config) {
           avisar(config.aoChamada, { fase: 'inicio', ...c });
         } else if (evento?.type === 'tool.completed') {
           const c = fechar(evento.toolName);
-          operacoes.push({ nome: c.nome, args: c.args, ok: true });
-          avisar(config.aoChamada, { fase: 'fim', ok: true, ...c });
+          // Handler que devolve recusa sem lançar também dispara `tool.completed`: a falha está no retorno
+          // (mesma regra do loop do Jev, `falhaDoResultado`). Sem retorno guardado, vale o que o evento diz.
+          const guardado = retirarRetorno(evento.toolName);
+          const motivo = guardado ? falhaDoRetorno(evento.toolName, guardado.retorno) : null;
+          if (motivo) {
+            operacoes.push({ nome: c.nome, args: c.args, ok: false, erro: motivo });
+            // `desfecho` (aditivo): `ok: false` já significou "lançou"; aqui o handler DEVOLVEU a recusa.
+            avisar(config.aoChamada, { fase: 'fim', ok: false, erro: motivo, ...c, desfecho: 'recusa' });
+          } else {
+            operacoes.push({ nome: c.nome, args: c.args, ok: true });
+            avisar(config.aoChamada, { fase: 'fim', ok: true, ...c, desfecho: 'concluiu' });
+          }
         } else if (evento?.type === 'tool.failed') {
+          retirarRetorno(evento.toolName);
           const c = fechar(evento.toolName);
           operacoes.push({ nome: c.nome, args: c.args, ok: false, erro: evento.error });
-          avisar(config.aoChamada, { fase: 'fim', ok: false, erro: evento.error, ...c });
+          avisar(config.aoChamada, { fase: 'fim', ok: false, erro: evento.error, ...c, desfecho: 'lancou' });
         }
         let eventoParaOHost = evento;
         if (evento?.type === 'user_message_delivered') {
