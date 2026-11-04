@@ -64,7 +64,7 @@
     "genos-orchestrator": "^0.3.12"
   },
   "devDependencies": {
-    "@okds/kairos": "git+https://github.com./PatrickCavalcanti/kairos.git#semver:^0.841.261021",
+    "@okds/kairos": "git+https://github.com./PatrickCavalcanti/kairos.git#semver:^0.841.261103",
     "genos-orchestrator": "git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#semver:^0.3.12"
   },
   "dependencies": {

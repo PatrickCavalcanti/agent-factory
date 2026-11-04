@@ -18,11 +18,11 @@ consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semv
   300 caracteres (entra no bloco e no histórico de todo turno seguinte). Handler de sucesso segue `ok`.
 - **`falhaDoResultado` lê mais formas de motivo.** Além de `error` e `reason`, agora `erro`, `mensagem`, `message`, `motivo`
   (primeira string encontrada, no objeto ou aninhada) e `code` como último recurso; `{ ok: false, faltas }` segue
-  sem texto (`ok: false`). Retorno MCP `{ isError: true, content }` também é falha, com o texto do `content`
-  como motivo. Vale para o loop do Jev também, que usa a mesma função.
+  sem texto (`ok: false`). Retorno MCP `{ isError: true, content }` também é falha: vale o primeiro item de texto do `content`; se for
+  JSON com motivo (`{"ok":false,"error":{"message":"…"}}`), o motivo do JSON; senão, o texto. Vale para o loop do Jev também, que usa a mesma função.
 - **Linha do kairos no `load_capability`.** Quando o kairos terminar o retorno com `Para executar: call_capability, com ref = o nome do cabeçalho (##) e args = os parâmetros.`, a fábrica ajusta por protocolo: no nativo
   (`registraCapacidades === false`) acrescenta "Não chame pelo nome direto."; em envelope/fence remove a linha (lá o
-  nome direto é a porta). O kairos instalado ainda não emite a linha; o teste a simula.
+  nome direto é a porta). Testado com a linha real do kairos `0.841.261103` (devDependency subida de `^0.841.261021`) em nativo, envelope e fence.
 
 ### Adicionado
 

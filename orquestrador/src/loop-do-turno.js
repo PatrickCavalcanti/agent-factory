@@ -343,12 +343,20 @@ function motivoDe(v, nivel = 0) {
   return typeof v.code === 'string' && v.code.trim() ? v.code : undefined;
 }
 
-/** Texto de um retorno MCP `{ isError: true, content: [{ type: 'text', text }] }`; `content` em string também vale. */
+/**
+ * Motivo de um retorno MCP `{ isError: true, content: [{ type: 'text', text }] }`; `content` em string também vale. Só o PRIMEIRO item
+ * de texto conta (o host pode acrescentar outros depois). Esse texto costuma ser o JSON de falha do próprio host
+ * (`{"ok":false,"error":{"code":"validation","message":"…"}}`): sendo JSON com motivo, vale o motivo; senão, o texto.
+ */
 function textoDoContent(content) {
-  if (typeof content === 'string') return content.trim() || undefined;
-  if (!Array.isArray(content)) return undefined;
-  const textos = content.map((c) => (typeof c === 'string' ? c : (c && typeof c.text === 'string' ? c.text : ''))).filter((t) => t.trim());
-  return textos.length ? textos.join('\n') : undefined;
+  const itens = typeof content === 'string' ? [content] : (Array.isArray(content) ? content : []);
+  const primeiro = itens.map((c) => (typeof c === 'string' ? c : (c && typeof c.text === 'string' ? c.text : ''))).find((t) => t.trim());
+  if (primeiro === undefined) return undefined;
+  try {
+    const motivo = motivoDe(JSON.parse(primeiro));
+    if (motivo) return motivo;
+  } catch { /* texto simples */ }
+  return primeiro;
 }
 
 /** Falha de um OBJETO de resultado (`ok: false` ou retorno MCP com `isError`), ou `null`. `semMotivo` é o texto quando não há. */

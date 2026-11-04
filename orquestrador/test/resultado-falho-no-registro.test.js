@@ -187,3 +187,17 @@ test('aoChamada: o fim traz "desfecho" — recusa devolvida, exceção lançada 
   assert.match(String(lancada.fins[0].erro), /quebrou/);
   assert.equal(lancada.operacoes[0].ok, false);
 });
+
+test('isError com JSON do host: o registro mostra só o motivo; o corte de 300 não pega mensagem que cabe', async () => {
+  const doHost = (message) => ({ isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, error: { code: 'validation', message } }) }, { type: 'text', text: 'dica extra' }] });
+  for (const via of [DIRETA, PELA_META]) {
+    const curta = await rodar({ ...via, retorno: doHost('título é obrigatório') });
+    assert.equal(curta.operacoes[0].erro, 'título é obrigatório');
+    const cabe = 'm'.repeat(300);
+    const exata = await rodar({ ...via, retorno: doHost(cabe) });
+    assert.equal(exata.operacoes[0].erro, cabe, 'mensagem de 300 não é cortada, mesmo com o JSON passando de 300');
+    const longa = await rodar({ ...via, retorno: doHost('n'.repeat(900)) });
+    assert.equal(longa.operacoes[0].erro.length, 300);
+    assert.ok(longa.operacoes[0].erro.endsWith('…'));
+  }
+});

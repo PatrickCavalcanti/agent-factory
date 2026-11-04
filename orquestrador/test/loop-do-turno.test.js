@@ -273,10 +273,26 @@ test('falhaDoResultado: o motivo vem de erro, mensagem, motivo (e message/code),
 });
 
 test('falhaDoResultado: retorno MCP com isError é falha, com o texto do content como motivo', () => {
-  assert.equal(falhaDoResultado({ isError: true, content: [{ type: 'text', text: 'sem permissão' }, { type: 'text', text: 'tente outro' }] }), 'sem permissão\ntente outro');
+  assert.equal(falhaDoResultado({ isError: true, content: [{ type: 'text', text: 'sem permissão' }] }), 'sem permissão');
   assert.equal(falhaDoResultado({ isError: true, content: 'texto direto' }), 'texto direto');
   assert.equal(falhaDoResultado({ isError: true, content: [] }), 'isError: true');
   assert.equal(falhaDoResultado(JSON.stringify({ isError: true, content: [{ type: 'text', text: 'em json' }] })), 'em json');
   assert.equal(falhaDoResultado({ isError: false, content: [{ type: 'text', text: 'ok' }] }), null);
   assert.equal(falhaDoResultado({ content: [{ type: 'text', text: 'ok' }] }), null);
+});
+
+test('falhaDoResultado: isError com JSON no content usa o motivo do JSON; só o primeiro item de texto conta', () => {
+  const texto = (t) => ({ isError: true, content: [{ type: 'text', text: t }] });
+  assert.equal(falhaDoResultado(texto(JSON.stringify({ ok: false, error: { code: 'validation', message: 'título é obrigatório' } }))), 'título é obrigatório');
+  assert.equal(falhaDoResultado(texto(JSON.stringify({ ok: false, mensagem: 'sem autorização' }))), 'sem autorização');
+  assert.equal(falhaDoResultado(texto('sem permissão')), 'sem permissão');
+  assert.equal(falhaDoResultado(texto('{"quebrado":')), '{"quebrado":', 'JSON inválido vira o texto');
+  assert.equal(falhaDoResultado(texto(JSON.stringify({ faltas: ['a'] }))), '{"faltas":["a"]}', 'JSON sem motivo: o texto');
+  const doisItens = { isError: true, content: [
+    { type: 'text', text: JSON.stringify({ ok: false, error: { message: 'primeiro' } }) },
+    { type: 'text', text: JSON.stringify({ ok: false, error: { message: 'segundo' } }) },
+  ] };
+  assert.equal(falhaDoResultado(doisItens), 'primeiro');
+  assert.equal(falhaDoResultado({ isError: true, content: [{ type: 'image', data: 'x' }, { type: 'text', text: 'depois da imagem' }] }), 'depois da imagem');
+  assert.equal(falhaDoResultado({ isError: true, content: JSON.stringify({ error: { message: 'content em string' } }) }), 'content em string');
 });
