@@ -129,6 +129,13 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
  * @property {number} [prioridadeDasCapacidades] Repassado ao prompt-builder: posição do bloco de
  *   capacidades na faixa `system:stable` (default 50).
+ * @property {boolean} [separarSystemVolatil] Default false. true = o system vai ao provider em DUAS mensagens developer:
+ *   a parte estável (tudo até antes da primeira seção de piso declarada volatil: true, ou do nível dinâmico) e a volátil
+ *   (dali em diante). Para cache de prompt entre execuções: um provider que sabe marcar o fim da primeira mensagem
+ *   (ex.: Anthropic, cache_control no bloco) reaproveita a parte estável mesmo quando o final muda a cada execução.
+ *   Não muda o texto: o system do payload e as seções do rastro seguem inteiros, e as duas mensagens juntas com dois
+ *   LF dão os mesmos bytes. Sem nada volátil, ou com a volátil abrindo o system: uma mensagem só, como antes. Repassado
+ *   ao prompt-builder (ver ConfiguracaoDoPrompt.separarSystemVolatil).
  * @property {boolean} [pisoCompletoNoTurnoTrivial] Spec 2026-10-15 (D2): no turno trivial
  *   (`unchanged`), o piso entra com a descrição (`<provider>/instructions`) e o índice de TODAS as
  *   tools dos providers `loading.always` — a mesma forma de um turno normal —, em vez de só as
@@ -1230,6 +1237,8 @@ export function criarOrquestrador(config) {
     // e onde ele pousa na faixa estável. Sem estes campos, o comportamento é o de antes.
     ...(config.layoutDasCapacidades ? { layoutDasCapacidades: config.layoutDasCapacidades } : {}),
     ...(config.prioridadeDasCapacidades !== undefined ? { prioridadeDasCapacidades: config.prioridadeDasCapacidades } : {}),
+    // Cache entre execuções: o system sai em duas mensagens (estável + volátil) para o provider marcar a fronteira.
+    ...(config.separarSystemVolatil === true ? { separarSystemVolatil: true } : {}),
   });
   const decorar = config.decorarTool || IDENTIDADE;
   // Cauda efêmera / despejo (spec 2026-10-29): `config.despejo` ausente ou inválido = padrão (tudo desligado).
@@ -3784,6 +3793,8 @@ export function criarOrquestrador(config) {
     const payload = construtor.montar({
       contexto: contextoDoPrompt,
       texto: entrada.texto,
+      // Só lida com separarSystemVolatil: as refs de piso volátil abrem a parte volátil do system.
+      refsVolateis: [...refsVolateisDeclaradas, ...(config.refsVolateis?.(ctx) ?? [])],
       system: acumulacao.system,
       efemeros: acumulacao.efemeros,
       // `historico` é só dos turnos ANTERIORES, verbatim (ver JSDoc de `EntradaDaMontagem.
