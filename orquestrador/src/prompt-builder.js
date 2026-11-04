@@ -104,7 +104,8 @@
 
 /**
  * @typedef {Object} PayloadDoTurno
- * @property {MensagemDoTurno[]} mensagens Exatamente o que vai em `initialMessages` do genos.
+ * @property {MensagemDoTurno[]} mensagens Exatamente o que vai em `initialMessages` do genos. A primeira (`id: 'sys'`) é o system; com
+ *   `separarSystemVolatil` e uma parte volátil, a segunda (`id: 'sys-volatil'`, também `developer`) é o resto do system.
  * @property {string} system O system prompt inteiro, para gravar como arquivo.
  * @property {string} mensagemDoTurno A mensagem do turno (efêmeros + texto do usuário), idem.
  * @property {SecaoDoPrompt[]} secoes As mesmas duas, abertas por seção, para o log literal.
@@ -764,6 +765,14 @@ function legendasPadrao(n, { mecanicaNoCatalogo = false, estrategia } = {}) {
  *   congelada quando entra — hidratar um manual ou carregar uma capacidade só ACRESCENTA ao fim, e o
  *   prefixo já enviado fica byte a byte igual. O que é chamável não muda: vem de `capacidades`, não
  *   do texto.
+ * @property {boolean} [separarSystemVolatil] Default `false`. `true` = `montar` emite DUAS mensagens `developer` quando o
+ *   system tem uma parte volátil: `id: 'sys'` com tudo até antes da primeira seção volátil e `id: 'sys-volatil'` dali em
+ *   diante. A volátil é a primeira seção que vem de uma contribuição cuja ref está em `EntradaDaMontagem.refsVolateis`,
+ *   ou o nível dinâmico (`system:dynamic`, volátil por definição). Existe para o cache de prompt: o provider que sabe
+ *   marcar a fronteira (ex.: Anthropic, `cache_control` no fim do primeiro bloco) reaproveita a parte estável entre
+ *   execuções, em vez de ter a marca depois de um final que muda a cada uma. `system` e `secoes` do payload seguem
+ *   inteiros, e a junção das duas mensagens com dois LF (o separador do system) dá exatamente os bytes de `system`.
+ *   Sem seção volátil, ou com a volátil no começo (nada estável antes dela): uma mensagem só, idêntica a quando a opção está desligada.
  * @property {number} [prioridadeDasCapacidades] A posição do bloco `<capacidades>` na faixa `system:stable`. Default 50.
  *
  *   **As capacidades são uma contribuição estável como as outras** — a única
@@ -790,6 +799,8 @@ function legendasPadrao(n, { mecanicaNoCatalogo = false, estrategia } = {}) {
  * @typedef {Object} EntradaDaMontagem
  * @property {TContexto} contexto
  * @property {string} texto o que o usuário escreveu, cru. Fecha a mensagem do turno (recência).
+ * @property {readonly string[]} [refsVolateis] Refs de contribuição de piso declaradas `volatil: true`. Só lida com
+ *   `separarSystemVolatil`: a primeira seção do system vinda de uma dessas refs abre a parte volátil.
  * @property {SystemAcumulado} system
  * @property {Block[]} efemeros blocos que morrem com este turno.
  * @property {MensagemDoTurno[]} historico Mensagens dos turnos anteriores, VERBATIM. Vão entre o system e a mensagem
@@ -869,6 +880,7 @@ export function criarConstrutorDePrompt(config) {
     candidatos: config.legendas?.candidatos || padrao.candidatos,
   }
   const prioridadeDasCapacidades = config.prioridadeDasCapacidades ?? 50
+  const separarSystemVolatil = config.separarSystemVolatil === true
   const layoutDasCapacidades = config.layoutDasCapacidades ?? 'agrupado'
   if (!['agrupado', 'diario', 'lista-fixa'].includes(layoutDasCapacidades)) {
     throw new Error(`layoutDasCapacidades inválido: "${layoutDasCapacidades}" (use 'agrupado', 'diario' ou 'lista-fixa')`)
@@ -1383,16 +1395,35 @@ export function criarConstrutorDePrompt(config) {
    * @returns {SecaoDoPrompt[]}
    */
   function secoesDoSystem(contexto, acumulado) {
+    return secoesDoSystemComCorte(contexto, acumulado, null).secoes
+  }
+
+  /**
+   * As seções do system e o índice (em `secoes`) onde começa a parte volátil, ou `null` se não há.
+   * Com `refsVolateis` `null` só o nível dinâmico conta como volátil. O corte é sempre uma fronteira entre
+   * seções, então juntar as duas partes com o separador do system (dois LF) reproduz o system inteiro byte a byte.
+   * @param {TContexto} contexto
+   * @param {SystemAcumulado} acumulado
+   * @param {ReadonlySet<string> | null} refsVolateis
+   * @returns {{ secoes: SecaoDoPrompt[], corte: number | null }}
+   */
+  function secoesDoSystemComCorte(contexto, acumulado, refsVolateis) {
     /** @type {SecaoDoPrompt[]} */
     const secoes = config.base(contexto)
       .map(s => ({ nome: s.nome, destino: 'system', conteudo: s.conteudo }))
+    /** @type {number | null} */
+    let corte = null
+    const ehVolatil = (/** @type {string | undefined} */ ref) => Boolean(ref && refsVolateis?.has(ref))
 
     // Ordem por volatilidade crescente. Cada bloco só pode ser invalidado pelo
     // que está ACIMA dele, então o que muda menos fica mais no topo.
 
     // 1. Fixas — não mudam dentro da janela de cache.
     const fixas = secaoDeContribuicoes(nomes.fixas, acumulado.fixas)
-    if (fixas) secoes.push(fixas)
+    if (fixas) {
+      if (corte === null && acumulado.fixas.some(c => ehVolatil(c.ref))) corte = secoes.length
+      secoes.push(fixas)
+    }
 
     // 2. A faixa ESTÁVEL, ordenada por prioridade — e as capacidades são um
     //    item DELA, não um bloco à parte. É o que abre as 49 posições anteriores
@@ -1444,6 +1475,7 @@ export function criarConstrutorDePrompt(config) {
     const naFaixa = [
       ...acumulado.estaveis.map(c => ({
         prioridade: c.prioridade,
+        ref: c.ref,
         secao: {
           // Prefixo de nome de SEÇÃO (não de tag XML — este nome nunca é
           // impresso no prompt, é só a chave que `secoes[]` usa para o rastro
@@ -1460,15 +1492,22 @@ export function criarConstrutorDePrompt(config) {
       ...(blocoDeCapacidades ? [blocoDeCapacidades] : []),
     ].sort((a, b) => a.prioridade - b.prioridade)
 
+    if (corte === null) {
+      const i = naFaixa.findIndex(x => ehVolatil(x.ref))
+      if (i >= 0) corte = secoes.length + i
+    }
     secoes.push(...naFaixa.map(x => x.secao))
 
     // 3. Dinâmicas — por último no system, encostadas no histórico. Ainda estão
     //    ANTES dele, então mudar aqui derruba o histórico inteiro: é por isso
     //    que este nível deve tender a vazio.
     const dinamicas = secaoDeContribuicoes(nomes.dinamicas, acumulado.dinamicas)
-    if (dinamicas) secoes.push(dinamicas)
+    if (dinamicas) {
+      if (corte === null) corte = secoes.length
+      secoes.push(dinamicas)
+    }
 
-    return secoes
+    return { secoes, corte }
   }
 
   /**
@@ -1509,11 +1548,24 @@ export function criarConstrutorDePrompt(config) {
    * @returns {PayloadDoTurno}
    */
   function montar(entrada) {
-    const secoesSystem = secoesDoSystem(entrada.contexto, entrada.system)
+    const { secoes: secoesSystem, corte } = secoesDoSystemComCorte(
+      entrada.contexto,
+      entrada.system,
+      separarSystemVolatil ? new Set(entrada.refsVolateis ?? []) : null,
+    )
     const secoesTurno = secoesEfemeras(entrada.efemeros)
     const extras = (entrada.extrasDoTurno ?? []).filter((x) => x && x.conteudo)
 
     const system = secoesSystem.map(s => s.conteudo).join('\n\n')
+    // Duas mensagens developer quando ha parte estavel E parte volatil (ver separarSystemVolatil).
+    // O corte cai entre secoes, entao as duas partes juntas com o mesmo separador sao o system byte a byte.
+    const dividir = separarSystemVolatil && corte !== null && corte > 0 && corte < secoesSystem.length
+    const mensagensDeSistema = dividir
+      ? [
+        { id: 'sys', role: 'developer', content: secoesSystem.slice(0, corte).map(s => s.conteudo).join('\n\n') },
+        { id: 'sys-volatil', role: 'developer', content: secoesSystem.slice(corte).map(s => s.conteudo).join('\n\n') },
+      ]
+      : [{ id: 'sys', role: 'developer', content: system }]
     // O texto do usuário fecha a mensagem, sem moldura, para o pedido não
     // parecer mais um bloco de contexto entre outros. O efêmero é dobrado só
     // AQUI, na mensagem deste turno — o que for para o histórico é o texto cru.
@@ -1532,7 +1584,7 @@ export function criarConstrutorDePrompt(config) {
 
     return {
       mensagens: [
-        { id: 'sys', role: 'developer', content: system },
+        ...mensagensDeSistema,
         ...entrada.historico,
         {
           id: 'usr', role: 'user', content: mensagemDoTurno,

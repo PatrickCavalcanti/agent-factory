@@ -3,6 +3,22 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.2] — 2026-11-04
+
+### Adicionado
+
+- **`separarSystemVolatil`** (opção de `criarOrquestrador` e de `criarConstrutorDePrompt`, padrão `false`): o system sai em
+  DUAS mensagens `developer` — `id: 'sys'` com tudo até antes da primeira seção volátil e `id: 'sys-volatil'` dali em diante. É
+  volátil a primeira seção que vem de um piso declarado `volatil: true` (o `montar` ganhou `refsVolateis`, que a fábrica preenche
+  com `contribuicoes[].volatil` e `config.refsVolateis(ctx)`) ou o nível dinâmico (`system:dynamic`, volátil por definição).
+  Para o cache de prompt entre execuções: com o system num bloco só, a marca de cache do provider ficava depois de um
+  final que muda a cada job (worktree, tentativa, mensagem), e o prefixo igual dos jobs nunca era reaproveitado. Com a
+  fronteira, o host marca o primeiro bloco. `system` e `secoes` do payload e do `aoMontar` seguem inteiros; a junção das duas
+  mensagens com dois LF dá exatamente os bytes de `system` (testado). Sem seção volátil, ou com a volátil abrindo o
+  system (nada estável antes), sai uma mensagem só, idêntica a quando a opção está desligada. Com a opção desligada nada
+  muda. O genos repassa as duas mensagens ao provider em ordem, antes do histórico e do pedido; quem lê `mensagens` do
+  payload e supunha uma só mensagem `developer` deve olhar `id` (`sys` / `sys-volatil`).
+
 ## [0.2.1] — 2026-11-03
 
 ### Corrigido
