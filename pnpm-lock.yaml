@@ -16,8 +16,8 @@ importers:
         specifier: git+https://github.com./PatrickCavalcanti/kairos.git#semver:^0.841.261103
         version: git+https://github.com./PatrickCavalcanti/kairos.git#66bfa30891581a57589bb4c2f3f68faa23e621be
       genos-orchestrator:
-        specifier: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#semver:^0.3.12
-        version: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613
+        specifier: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#semver:^0.3.13
+        version: git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#1cabdba12f3894ef2c04e64c46e954620b0ef941
 
 packages:
 
@@ -35,11 +35,6 @@ packages:
     version: 0.3.13
     engines: {node: '>=22.0.0', pnpm: '>=10.0.0'}
 
-  genos-orchestrator@git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613:
-    resolution: {commit: c0f935a3f630dc1c25716d05e136964dc07f4613, repo: https://github.com./PatrickCavalcanti/genos-orchestrator.git, type: git}
-    version: 0.3.12
-    engines: {node: '>=22.0.0', pnpm: '>=10.0.0'}
-
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
@@ -53,11 +48,6 @@ snapshots:
   '@opentelemetry/api@1.10.0': {}
 
   genos-orchestrator@git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#1cabdba12f3894ef2c04e64c46e954620b0ef941:
-    dependencies:
-      '@opentelemetry/api': 1.10.0
-      zod: 3.25.76
-
-  genos-orchestrator@git+https://github.com./PatrickCavalcanti/genos-orchestrator.git#c0f935a3f630dc1c25716d05e136964dc07f4613:
     dependencies:
       '@opentelemetry/api': 1.10.0
       zod: 3.25.76
