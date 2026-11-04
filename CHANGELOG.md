@@ -3,6 +3,22 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.1] — 2026-11-03
+
+### Corrigido
+
+- **Registro de operações do turno marcava `ok` a função que devolve recusa sem lançar.** O genos emite
+  `tool.completed` sempre que o handler retorna (o evento não traz o retorno), e o dispatcher do kairos
+  devolve `{ ok: true, result }` mesmo quando o handler devolve `{ ok: false }`. Resultado: `operacoes`, o
+  bloco `<turn_operations>` e o `aoChamada` (`fase: 'fim'`) diziam `ok`/`resultado: ok` para uma recusa
+  (caso medido: `pipeline__abrir_pedido` recusado por falta de autorização, registrado como `ok`). Agora o
+  retorno de cada chamada é observado (por fora do `decorarTool`) e passa por `falhaDoResultado` — a mesma
+  regra do loop do Jev, sem segunda heurística; pela meta-tool `call_capability` o retorno é desembrulhado do
+  envelope do dispatcher (`result`) antes. A falha sai com `ok: false` e o motivo em `erro`. Handler de
+  sucesso segue `ok`. Efeito colateral intencional: função recusada deixa de contar como "usada" no registro de
+  uso do despejo (`usosDoTurno` ignora `!op.ok`) e em `consultasDoTurnoDe` (`ok` passa a `false`).
+  Teste: `orquestrador/test/resultado-falho-no-registro.test.js`.
+
 ## [0.2.0] — 2026-11-01
 
 ### Adicionado
