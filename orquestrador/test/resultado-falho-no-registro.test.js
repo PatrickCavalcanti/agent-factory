@@ -132,3 +132,58 @@ test('o resultado de uma chamada não vaza para a seguinte do mesmo nome', async
   const { operacoes } = await orq.executarTurno({ texto: 'abre dois pedidos pra mim', estado: ESTADO_INICIAL });
   assert.deepEqual(operacoes.map((o) => o.ok), [false, true]);
 });
+
+
+test('o motivo de qualquer forma de recusa chega ao registro (erro, mensagem, motivo, code, faltas)', async () => {
+  const casos = [
+    [{ ok: false, erro: 'sem autorização' }, 'sem autorização'],
+    [{ ok: false, code: 'sem_autorizacao', mensagem: 'sem autorização para abrir' }, 'sem autorização para abrir'],
+    [{ ok: false, motivo: 'cota esgotada' }, 'cota esgotada'],
+    [{ ok: false, faltas: ['titulo'] }, 'ok: false'],
+  ];
+  for (const via of [DIRETA, PELA_META]) {
+    for (const [retorno, motivo] of casos) {
+      const { operacoes, historico } = await rodar({ ...via, retorno });
+      assert.equal(operacoes[0].ok, false);
+      assert.equal(operacoes[0].erro, motivo);
+      assert.ok(historico.find((m) => m.role === 'assistant').content.includes(motivo));
+    }
+  }
+});
+
+test('retorno MCP com isError sai como falha, com o texto do content', async () => {
+  const retorno = { isError: true, content: [{ type: 'text', text: 'servidor recusou' }] };
+  for (const via of [DIRETA, PELA_META]) {
+    const { operacoes } = await rodar({ ...via, retorno });
+    assert.equal(operacoes[0].ok, false);
+    assert.equal(operacoes[0].erro, 'servidor recusou');
+  }
+});
+
+test('motivo longo é cortado em 300 caracteres, no registro e no histórico', async () => {
+  const longo = 'x'.repeat(5000);
+  for (const via of [DIRETA, PELA_META]) {
+    const { operacoes, historico, fins } = await rodar({ ...via, retorno: { ok: false, erro: longo } });
+    assert.equal(operacoes[0].erro.length, 300);
+    assert.ok(operacoes[0].erro.endsWith('…'));
+    assert.equal(fins[0].erro.length, 300);
+    assert.ok(!historico.find((m) => m.role === 'assistant').content.includes('x'.repeat(301)));
+  }
+  const curto = 'y'.repeat(300);
+  const { operacoes } = await rodar({ ...DIRETA, retorno: { ok: false, erro: curto } });
+  assert.equal(operacoes[0].erro, curto, '300 exatos não são cortados');
+});
+
+test('aoChamada: o fim traz "desfecho" — recusa devolvida, exceção lançada e conclusão se distinguem', async () => {
+  const devolvida = await rodar({ ...DIRETA, retorno: { ok: false, erro: 'recusado' } });
+  assert.equal(devolvida.fins[0].ok, false);
+  assert.equal(devolvida.fins[0].desfecho, 'recusa');
+  const concluida = await rodar({ ...DIRETA, retorno: { ok: true } });
+  assert.equal(concluida.fins[0].ok, true);
+  assert.equal(concluida.fins[0].desfecho, 'concluiu');
+  const lancada = await rodar({ ...DIRETA, retorno: () => { throw new Error('quebrou'); } });
+  assert.equal(lancada.fins[0].ok, false);
+  assert.equal(lancada.fins[0].desfecho, 'lancou');
+  assert.match(String(lancada.fins[0].erro), /quebrou/);
+  assert.equal(lancada.operacoes[0].ok, false);
+});

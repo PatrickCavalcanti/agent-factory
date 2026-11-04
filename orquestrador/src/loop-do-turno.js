@@ -323,10 +323,45 @@ function mensagemDeErro(error) {
   return undefined;
 }
 
-export function falhaDoResultado(r) {
-  if (r && typeof r === 'object' && r.ok === false) {
-    return String(mensagemDeErro(r.error) ?? r.reason ?? 'ok: false');
+/** Campos onde um power/host põe o motivo da recusa, na ordem de preferência (`error` ganha de `reason`, como sempre). */
+const CAMPOS_DO_MOTIVO = ['error', 'erro', 'mensagem', 'message', 'motivo', 'reason'];
+
+/**
+ * Primeira string de motivo em `v`: a própria string, ou o primeiro de `CAMPOS_DO_MOTIVO` que dê string (descendo em
+ * objeto aninhado, como `error: { message }`); `code` por último, quando é tudo o que há. `undefined` se não achar.
+ * @param {unknown} v
+ * @param {number} [nivel]
+ * @returns {string|undefined}
+ */
+function motivoDe(v, nivel = 0) {
+  if (typeof v === 'string') return v.trim() ? v : undefined;
+  if (!v || typeof v !== 'object' || nivel > 2) return undefined;
+  for (const campo of CAMPOS_DO_MOTIVO) {
+    const achado = motivoDe(v[campo], nivel + 1);
+    if (achado) return achado;
   }
+  return typeof v.code === 'string' && v.code.trim() ? v.code : undefined;
+}
+
+/** Texto de um retorno MCP `{ isError: true, content: [{ type: 'text', text }] }`; `content` em string também vale. */
+function textoDoContent(content) {
+  if (typeof content === 'string') return content.trim() || undefined;
+  if (!Array.isArray(content)) return undefined;
+  const textos = content.map((c) => (typeof c === 'string' ? c : (c && typeof c.text === 'string' ? c.text : ''))).filter((t) => t.trim());
+  return textos.length ? textos.join('\n') : undefined;
+}
+
+/** Falha de um OBJETO de resultado (`ok: false` ou retorno MCP com `isError`), ou `null`. `semMotivo` é o texto quando não há. */
+function falhaDeObjeto(r, semMotivo) {
+  if (!r || typeof r !== 'object') return null;
+  if (r.ok === false) return String(motivoDe(r) ?? semMotivo);
+  if (r.isError === true) return String(textoDoContent(r.content) ?? motivoDe(r) ?? 'isError: true');
+  return null;
+}
+
+export function falhaDoResultado(r) {
+  const deObjeto = falhaDeObjeto(r, 'ok: false');
+  if (deObjeto !== null) return deObjeto;
   if (typeof r === 'string') {
     if (r.startsWith('Erro:')) return r;
     let parsed;
@@ -335,9 +370,7 @@ export function falhaDoResultado(r) {
     } catch {
       return null;
     }
-    if (parsed && typeof parsed === 'object' && parsed.ok === false) {
-      return String(mensagemDeErro(parsed.error) ?? parsed.reason ?? r);
-    }
+    return falhaDeObjeto(parsed, r);
   }
   return null;
 }

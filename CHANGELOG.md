@@ -14,10 +14,32 @@ consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semv
   (caso medido: `pipeline__abrir_pedido` recusado por falta de autorização, registrado como `ok`). Agora o
   retorno de cada chamada é observado (por fora do `decorarTool`) e passa por `falhaDoResultado` — a mesma
   regra do loop do Jev, sem segunda heurística; pela meta-tool `call_capability` o retorno é desembrulhado do
-  envelope do dispatcher (`result`) antes. A falha sai com `ok: false` e o motivo em `erro`. Handler de
-  sucesso segue `ok`. Efeito colateral intencional: função recusada deixa de contar como "usada" no registro de
-  uso do despejo (`usosDoTurno` ignora `!op.ok`) e em `consultasDoTurnoDe` (`ok` passa a `false`).
-  Teste: `orquestrador/test/resultado-falho-no-registro.test.js`.
+  envelope do dispatcher (`result`) antes. A falha sai com `ok: false` e o motivo em `erro`, cortado em
+  300 caracteres (entra no bloco e no histórico de todo turno seguinte). Handler de sucesso segue `ok`.
+- **`falhaDoResultado` lê mais formas de motivo.** Além de `error` e `reason`, agora `erro`, `mensagem`, `message`, `motivo`
+  (primeira string encontrada, no objeto ou aninhada) e `code` como último recurso; `{ ok: false, faltas }` segue
+  sem texto (`ok: false`). Retorno MCP `{ isError: true, content }` também é falha, com o texto do `content`
+  como motivo. Vale para o loop do Jev também, que usa a mesma função.
+- **Linha do kairos no `load_capability`.** Quando o kairos terminar o retorno com `Para executar: call_capability, com ref = o nome do cabeçalho (##) e args = os parâmetros.`, a fábrica ajusta por protocolo: no nativo
+  (`registraCapacidades === false`) acrescenta "Não chame pelo nome direto."; em envelope/fence remove a linha (lá o
+  nome direto é a porta). O kairos instalado ainda não emite a linha; o teste a simula.
+
+### Adicionado
+
+- **`aoChamada` (`fase: 'fim'`) ganha o campo aditivo `desfecho`**: `'concluiu'`, `'recusa'` (o handler devolveu a
+  recusa) ou `'lancou'` (exceção, `tool.failed`). Os campos atuais não mudam, mas `ok: false` agora também vale
+  para recusa devolvida: host que lia `ok === false` como "lançou" (ex.: `tool_threw`) deve olhar `desfecho`.
+
+### Comportamento que muda por consequência
+
+- Função recusada deixa de contar como "usada" no registro de uso do despejo (`usosDoTurno` ignora `!op.ok`) e
+  `consultasDoTurnoDe` (apoio) passa a devolver `ok: false` para consulta recusada.
+
+### Pendências
+
+- `recusaSemManual` (`manual_nao_carregado`, devolve `{ erro, mensagem }` sem `ok: false`) segue `ok` no
+  histórico e em `aoChamada`; só o conjunto `recusadas` a distingue (para o registro de uso). Tornar essa recusa
+  uma falha do registro é decisão de comportamento, fora desta versão.
 
 ## [0.2.0] — 2026-11-01
 
