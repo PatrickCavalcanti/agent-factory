@@ -471,20 +471,96 @@ const IDENTIDADE = (_nome, definicao) => definicao;
 const META_TOOLS = ['load_capability', 'call_capability', 'search_capabilities'];
 
 /**
- * Texto que o genos anexa a `Unknown tool '<nome>'` (`unknownToolMessage`).
- * No protocolo nativo só as três meta-tools são registradas, mas o índice do
- * prompt mostra o nome exposto (`<capacidade>__<tool>`) e o modelo às vezes o
- * chama direto — e recebia só "not registered in this run". Nome que não é de
- * catálogo (não-string, meta-tool, sem `__`) → `undefined` (mensagem padrão).
- * (Do Ariadne 1901880d.)
+ * Texto que o genos anexa a `Unknown tool '<nome>'` (`unknownToolMessage`), no protocolo nativo. Desde a 0.2.3 a função
+ * do catálogo COM manual executa pelo nome (`provedorComAtalhoDoCatalogo`); chega aqui só o que não pôde ir:
+ *
+ * - função do catálogo (`nomesDoCatalogo`, nome exposto ou sinônimo cru) sem manual carregado: a mesma regra da guarda
+ *   do envelope (`recusaSemManual`) — carregar antes de chamar;
+ * - nome com `__` que não está no catálogo: não existe, e a busca é o caminho.
+ *
+ * Não-string, meta-tool ou nome sem `__` fora do catálogo → `undefined` (mensagem padrão do genos). (Do Ariadne
+ * 1901880d; texto revisto na 0.2.3.)
  * @param {unknown} toolName
+ * @param {Map<string, string>} [nomesDoCatalogo] nome com que o modelo chama → `ref`
  * @returns {string|undefined}
  */
-export function mensagemDeToolDesconhecida(toolName) {
-  if (typeof toolName !== 'string' || META_TOOLS.includes(toolName) || !toolName.includes('__')) return undefined;
-  return `"${toolName}" é uma função do catálogo e não se chama pelo nome direto. ` +
-    `Chame call_capability com { "ref": "${toolName}", "args": { ... } } — ` +
-    `use load_capability com essa ref antes, se ainda não leu o manual dela.`;
+export function mensagemDeToolDesconhecida(toolName, nomesDoCatalogo = new Map()) {
+  if (typeof toolName !== 'string' || META_TOOLS.includes(toolName)) return undefined;
+  const ref = nomesDoCatalogo.get(toolName);
+  if (ref) {
+    return `A função "${toolName}" ainda não tem manual carregado. Carregue o manual com load_capability ` +
+      `(refs: ["${ref}"]) e chame de novo, já sabendo os argumentos e as regras.`;
+  }
+  if (!toolName.includes('__')) return undefined;
+  return `"${toolName}" não é uma função do catálogo. Use o nome exato de uma função listada no catálogo; ` +
+    `se nenhuma servir, procure com search_capabilities.`;
+}
+
+/**
+ * No nativo, a função do catálogo COM manual pode ser chamada pelo nome, como no envelope do Igris: a chamada vira
+ * `call_capability` antes de o genos ver a resposta.
+ *
+ * O nativo só oferece ao modelo as três meta-tools (lista fixa: é o começo do prefixo de cache, `7ac494bb`), e as
+ * funções do catálogo executavam só por `call_capability`. O modelo, vendo o manual completo, chamava pelo nome: no chat
+ * do Ariadne, no primeiro turno de toda conversa com o manual de `codigo` no prompt (4 de 4, de 2026-10-29 a 2026-11-14,
+ * mesmo com os textos sem nome de função). A pessoa via um erro vermelho e o turno pagava uma ida a mais ao provider.
+ * O Igris não tem o problema porque no envelope o nome É a porta — com a guarda do manual (`registryDoTurno`).
+ *
+ * A troca é na RESPOSTA do provider porque o genos executa e grava no histórico a mesma lista (`toolCalls` vira
+ * `nativeToolCalls`). Assim, quem lê eventos, histórico e registro de operações continua vendo só `call_capability`; o
+ * kairos confere escopo, permissão e argumentos como em qualquer chamada; e o modelo vê no histórico a forma certa.
+ *
+ * Só troca nome do catálogo (`nomesDoCatalogo`: nome com que o modelo chama → `ref`) que não é função nativa do pedido,
+ * só quando o pedido oferece `call_capability`, e só se `temManual(ref)` (a guarda do envelope: manual no prompt, na
+ * cauda ou carregado antes, neste turno). Sem manual a chamada segue como veio e cai em `mensagemDeToolDesconhecida`,
+ * que manda carregar. Diferença do envelope: lá a guarda roda na execução, então carregar e chamar no MESMO lote passa;
+ * aqui a conferência é na chegada da resposta, e a chamada do mesmo lote é recusada (o modelo ainda não leu o manual).
+ *
+ * @template {{ name: string, model: string, generate: Function, stream?: Function, cancel?: Function }} P
+ * @param {P} provider
+ * @param {Map<string, string>} nomesDoCatalogo
+ * @param {{ temManual?: (ref: string) => boolean }} [opcoes] sem `temManual`, troca toda função do catálogo
+ * @returns {P}
+ */
+export function provedorComAtalhoDoCatalogo(provider, nomesDoCatalogo, { temManual } = {}) {
+  const pelaPorta = (resposta, pedido) => {
+    if (!resposta?.toolCalls?.length) return resposta;
+    const nativos = new Set((pedido?.tools ?? []).map((t) => t?.name));
+    if (!nativos.has('call_capability')) return resposta;
+    let trocou = false;
+    const toolCalls = resposta.toolCalls.map((chamada) => {
+      const ref = nomesDoCatalogo.get(chamada?.toolName);
+      if (!ref || nativos.has(chamada.toolName)) return chamada;
+      if (temManual && !temManual(ref)) return chamada;
+      trocou = true;
+      return { ...chamada, toolName: 'call_capability', args: { ref, args: chamada.args ?? {} } };
+    });
+    return trocou ? { ...resposta, toolCalls } : resposta;
+  };
+  // Objeto novo com os campos que o genos lê (`name`, `model`, `capabilities`, `generate`, `stream`, `cancel`), e não
+  // `Object.create(provider)`: método de classe com campo privado quebra quando `this` não é a instância.
+  return {
+    get name() { return provider.name; },
+    get model() { return provider.model; },
+    get capabilities() { return provider.capabilities; },
+    generate: async (pedido) => pelaPorta(await provider.generate(pedido), pedido),
+    ...(typeof provider.stream === 'function' ? {
+      async *stream(pedido) {
+        for await (const evento of provider.stream(pedido)) {
+          yield evento?.type === 'response.completed' ? { ...evento, response: pelaPorta(evento.response, pedido) } : evento;
+        }
+      },
+    } : {}),
+    ...(typeof provider.cancel === 'function' ? { cancel: (requestId) => provider.cancel(requestId) } : {}),
+  };
+}
+
+/** Nome com que o modelo chama cada função do catálogo → `ref` para `call_capability` (nome exposto e sinônimo cru). */
+function nomesDoCatalogoParaAPorta(capacidades) {
+  const expostas = toolsExpostas(capacidades);
+  const nomes = new Map(expostas.map((t) => [t.nome, t.nome]));
+  for (const [cru, nome] of sinonimosCrus(expostas).porCru) nomes.set(cru, nome);
+  return nomes;
 }
 
 /**
@@ -4032,25 +4108,34 @@ export function criarOrquestrador(config) {
       };
       return enquadramento;
     };
+    // Manual disponível neste turno: no prompt acumulado, na cauda, ou carregado por `load_capability` antes, no turno.
+    // Mesma regra da guarda de `registryDoTurno` (envelope/fence) e do atalho do nativo (`provedorComAtalhoDoCatalogo`).
+    const nomesComManual = new Set([...nomesComManualNoPrompt(acumulacao), ...nomesDaCauda(caudaDoTurno)]);
+    const temManualNoTurno = (nome) => nomesComManual.has(nome)
+      || (carregadasNoTurno.size > 0 && nomesExpostosCarregadosNoTurno(carregadasNoTurno, manager).has(nome));
+    const nomesDoCatalogo = estrategia.registraCapacidades === false ? nomesDoCatalogoParaAPorta(config.capacidades) : null;
     const orchestrator = createOrchestrator({
       // Passagem genérica (`config.genos`): vem PRIMEIRO, então toda chave que a fábrica define
       // abaixo vence. Chaves que a fábrica só define condicionalmente (ex.: `pricingResolver`,
       // `validateTurn`) valem do host quando a fábrica não as define.
       ...(config.genos ?? {}),
-      provider: config.provider(ctx),
+      // Nativo: função do catálogo com manual chamada pelo nome vira `call_capability` (ver `provedorComAtalhoDoCatalogo`).
+      provider: nomesDoCatalogo
+        ? provedorComAtalhoDoCatalogo(config.provider(ctx), nomesDoCatalogo, { temManual: temManualNoTurno })
+        : config.provider(ctx),
       runStore,
       // N-guarda: `manager`/`carregadasNoTurno` habilitam o guarda a reconsultar,
       // A CADA CHAMADA (não só na montagem), o que `load_capability` trouxe NO
       // MEIO deste turno — ver o comentário no laço de `registryDoTurno` acima.
       // Gate (spec §4.3): terceira fonte de manual — as funções com manual na CAUDA deste turno executam
       // mesmo sem estar no system acumulado.
-      tools: registryDoTurno(bridge, ctx, new Set([...nomesComManualNoPrompt(acumulacao), ...nomesDaCauda(caudaDoTurno)]), estrategia.registraCapacidades, manager, carregadasNoTurno, idsComInstrucoesNoPrompt(acumulacao, caudaDoTurno), recusadasNoTurno, guardarRetorno),
+      tools: registryDoTurno(bridge, ctx, nomesComManual, estrategia.registraCapacidades, manager, carregadasNoTurno, idsComInstrucoesNoPrompt(acumulacao, caudaDoTurno), recusadasNoTurno, guardarRetorno),
       initialMessages: payload.mensagens,
       toolProtocol: estrategia.toolProtocol,
       outputMode,
-      // Só onde as capacidades NÃO são registradas (nativo): lá a porta é `call_capability`.
-      // Em envelope/fence o nome direto é a porta, e o texto mentiria.
-      ...(estrategia.registraCapacidades === false ? { unknownToolMessage: ({ toolName }) => mensagemDeToolDesconhecida(toolName) } : {}),
+      // Só onde as capacidades NÃO são registradas (nativo): o que o atalho não levou à porta (sem manual, ou fora do
+      // catálogo). Em envelope/fence o nome é a porta e a guarda responde por dentro do registry.
+      ...(nomesDoCatalogo ? { unknownToolMessage: ({ toolName }) => mensagemDeToolDesconhecida(toolName, nomesDoCatalogo) } : {}),
       maxIterations: maxIteracoes,
       formatUserMessages: formatarELembrar,
       ...(config.validateTurn ? { validateTurn: config.validateTurn } : {}),

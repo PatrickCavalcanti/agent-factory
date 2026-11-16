@@ -11,6 +11,7 @@
     "normalizarDespejo",
     "opcoesDeLimiares",
     "opcoesDeSemantica",
+    "provedorComAtalhoDoCatalogo",
     "recalcularCatalogo",
     "registrarCapacidadesNoManager"
   ],
