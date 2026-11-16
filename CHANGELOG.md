@@ -7,17 +7,26 @@ consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semv
 
 ### Corrigido
 
-- **No protocolo nativo, a função do catálogo chamada pelo nome executa em vez de voltar "Unknown tool".** A
-  orientação de `mensagemDeToolDesconhecida` (0.1) ensinava o caminho, mas a volta não sumiu: no chat do Ariadne o
-  modelo chamou `codigo__ler_codigo` direto no primeiro turno de toda conversa com o manual no prompt (4 de 4 de
-  2026-10-29 a 2026-11-14), e a pessoa via um erro vermelho antes de o turno se corrigir. Agora a fábrica embrulha o
-  provider do turno (`provedorComAtalhoDoCatalogo`, export novo de `.`) e troca, na resposta, a chamada pelo nome do
-  catálogo (nome exposto ou sinônimo cru) por `call_capability({ ref, args })`. A troca acontece antes de o genos
-  executar e gravar o histórico, então eventos, `nativeToolCalls`, `<turn_operations>` e `aoChamada` continuam vendo só
-  `call_capability`; o kairos confere escopo, permissão e argumentos como em qualquer chamada; e o modelo vê no
-  histórico a forma certa. Vale para `generate` e para o `response.completed` do `stream`. Só no nativo, só quando o
-  pedido oferece `call_capability`, e nunca para nome registrado como função nativa. Nome fora do catálogo continua
-  recebendo a orientação de sempre. Envelope e fence não mudam.
+- **No protocolo nativo, a função do catálogo COM manual pode ser chamada pelo nome, como no envelope.** A orientação de
+  `mensagemDeToolDesconhecida` (0.1) ensinava `call_capability`, mas a volta não sumiu: no chat do Ariadne o modelo
+  chamou `codigo__ler_codigo` direto no primeiro turno de toda conversa com o manual no prompt (4 de 4 de 2026-10-29 a
+  2026-11-14), e a pessoa via um erro vermelho antes de o turno se corrigir. O Igris não tinha o problema porque no
+  envelope o nome é a porta. Agora a fábrica embrulha o provider do turno (`provedorComAtalhoDoCatalogo`, export novo de
+  `.`) e troca, na resposta, a chamada pelo nome do catálogo (nome exposto ou sinônimo cru) por
+  `call_capability({ ref, args })` — **só se a função tem manual** (no prompt, na cauda ou carregado antes, no turno: a
+  mesma guarda do envelope). A troca acontece antes de o genos executar e gravar o histórico, então eventos,
+  `nativeToolCalls`, `<turn_operations>` e `aoChamada` continuam vendo só `call_capability`; o kairos confere escopo,
+  permissão e argumentos como em qualquer chamada; e a lista nativa segue com as três meta-tools (o cache de
+  `7ac494bb` não muda). Vale para `generate` e para o `response.completed` do `stream`; nunca para nome registrado
+  como função nativa. Diferença do envelope: a conferência é na chegada da resposta, então carregar e chamar no
+  MESMO lote é recusado (lá passa, porque a guarda roda na execução). Envelope e fence não mudam.
+
+### Mudado
+
+- **`mensagemDeToolDesconhecida(toolName, nomesDoCatalogo?)`** ganhou o segundo argumento e textos novos. Função do
+  catálogo que chega a ela é a que ficou sem manual: o texto manda carregar com `load_capability` pela `ref`. Nome com
+  `__` fora do catálogo: diz que não existe e aponta `search_capabilities`. Sem o mapa, todo nome com `__` cai no
+  segundo caso (antes o texto mandava usar `call_capability` com o próprio nome).
 
 ## [0.2.2] — 2026-11-04
 

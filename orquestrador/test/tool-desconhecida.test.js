@@ -6,17 +6,27 @@ import { systemVazio } from '../src/prompt-builder.js';
 
 const ESTADO = { system: systemVazio(), turno: 0, kairos: { loadedProviders: [], consciousTools: [], hydratedTools: [], loadedSkills: [], recentUse: [] } };
 
-test('nome de catálogo chamado direto: a mensagem ensina call_capability com a mesma ref', () => {
-  const msg = mensagemDeToolDesconhecida('etapa__ler');
-  assert.match(msg, /call_capability/);
-  assert.match(msg, /"ref": "etapa__ler"/);
+const CATALOGO = new Map([['etapa__ler', 'etapa__ler'], ['ler', 'etapa__ler']]);
+
+test('função do catálogo que chegou à mensagem de desconhecida: é porque falta o manual, e a mensagem manda carregar', () => {
+  const msg = mensagemDeToolDesconhecida('etapa__ler', CATALOGO);
+  assert.match(msg, /ainda não tem manual carregado/);
   assert.match(msg, /load_capability/);
+  assert.match(msg, /"etapa__ler"/);
+  // Sinônimo cru: o manual se carrega pela ref.
+  assert.match(mensagemDeToolDesconhecida('ler', CATALOGO), /"etapa__ler"/);
 });
 
-test('nome que não é de catálogo, meta-tool ou não-string fica com a mensagem padrão do genos', () => {
-  assert.equal(mensagemDeToolDesconhecida('inexistente'), undefined);
-  assert.equal(mensagemDeToolDesconhecida('call_capability'), undefined);
-  assert.equal(mensagemDeToolDesconhecida(undefined), undefined);
+test('nome com cara de catálogo que não está no catálogo: a mensagem diz isso e aponta a busca', () => {
+  const msg = mensagemDeToolDesconhecida('etapa__inexistente', CATALOGO);
+  assert.match(msg, /não é uma função do catálogo/);
+  assert.match(msg, /search_capabilities/);
+});
+
+test('nome sem __ fora do catálogo, meta-tool ou não-string fica com a mensagem padrão do genos', () => {
+  assert.equal(mensagemDeToolDesconhecida('inexistente', CATALOGO), undefined);
+  assert.equal(mensagemDeToolDesconhecida('call_capability', CATALOGO), undefined);
+  assert.equal(mensagemDeToolDesconhecida(undefined, CATALOGO), undefined);
 });
 
 const CAP = [{ id: 'etapa', descricao: 'Etapa.', tools: [{ name: 'ler', description: 'Lê.', schema: z.object({}), handler: async () => ({}) }] }];
@@ -43,12 +53,76 @@ async function resultadoDaToolDesconhecida(protocolo, chamada) {
   return vistos;
 }
 
-test('nativo: nome com cara de catálogo que não está no catálogo continua recebendo a orientação de call_capability', async () => {
+test('nativo: nome com cara de catálogo que não está no catálogo recebe a orientação de procurar', async () => {
   const vistos = await resultadoDaToolDesconhecida('nativo', () => ({
     text: '', stopReason: 'tool_calls', toolCalls: [{ id: 't1', toolName: 'etapa__inexistente', args: {} }],
   }));
   assert.match(vistos, /Unknown tool/);
-  assert.match(vistos, /não se chama pelo nome direto/);
+  assert.match(vistos, /não é uma função do catálogo/);
+});
+
+/**
+ * Mesmo arranjo de `guarda-manual.test.js`: `agenda` é piso e `notas` só entra pelo ranking, com um embedder de eixos
+ * ortogonais — numa pergunta sobre agenda, `notas` não carrega e o manual de `notas__gravar` não chega ao prompt.
+ */
+function embedderControlado() {
+  return {
+    modelSlug: 'fake-test-v1',
+    async embed(texto) {
+      const t = texto.toLowerCase();
+      if (t.includes('agenda') || t.includes('reuni')) return [1, 0];
+      if (t.includes('nota') || t.includes('anota')) return [0, 1];
+      return [0, 0];
+    },
+  };
+}
+
+async function turnoNativoSemManual(chamadas) {
+  let n = 0;
+  let historico = null;
+  const gravados = [];
+  const provider = () => ({
+    name: 'fake', model: 'f',
+    capabilities: { streaming: false, usage: false, cancellation: false, structuredOutput: true, nativeTools: true, backgroundRuns: false, preferredToolProtocol: 'provider_native' },
+    async generate(req) {
+      n += 1;
+      if (n <= chamadas.length) return { text: '', stopReason: 'tool_call', toolCalls: [chamadas[n - 1]] };
+      historico = req.messages;
+      return { text: 'fim', stopReason: 'completed' };
+    },
+  });
+  const orq = criarOrquestrador({
+    base: () => [],
+    capacidades: [
+      { id: 'agenda', descricao: 'Consulta a agenda do usuário.', tools: [{ name: 'listar', description: 'Lista eventos.', schema: z.object({}), handler: async () => ({ eventos: [] }) }] },
+      {
+        id: 'notas', descricao: 'Gerencia notas pessoais.', piso: false,
+        semanticText: 'anotacoes pessoais lembretes rascunho ideias soltas bloco de notas',
+        tools: [{ name: 'gravar', description: 'Grava uma nota.', schema: z.object({ texto: z.string() }), handler: async (a) => { gravados.push(a); return { ok: true }; } }],
+      },
+    ],
+    embedder: embedderControlado(), protocolo: 'nativo', provider, decorarTool: (_n, d) => d,
+  });
+  await orq.executarTurno({ texto: 'preciso organizar minha agenda de reuniões desta semana, pode me ajudar', estado: ESTADO });
+  const nativas = (historico ?? []).flatMap((m) => m?.metadata?.nativeToolCalls ?? []);
+  const resultados = (historico ?? []).filter((m) => m.role === 'tool_result').map((m) => String(m.content));
+  return { gravados, nativas, resultados };
+}
+
+test('nativo: função sem manual chamada pelo nome NÃO executa — a mensagem manda carregar o manual (a guarda do envelope)', async () => {
+  const { gravados, nativas, resultados } = await turnoNativoSemManual([{ id: 't1', toolName: 'notas__gravar', args: { texto: 'oi' } }]);
+  assert.deepEqual(gravados, []);
+  assert.deepEqual(nativas.map((c) => c.toolName), ['notas__gravar']);
+  assert.match(resultados.join('\n'), /ainda não tem manual carregado/);
+});
+
+test('nativo: carregou o manual no turno, a chamada pelo nome seguinte executa pela porta', async () => {
+  const { gravados, nativas } = await turnoNativoSemManual([
+    { id: 't1', toolName: 'load_capability', args: { refs: ['notas__gravar'] } },
+    { id: 't2', toolName: 'notas__gravar', args: { texto: 'oi' } },
+  ]);
+  assert.deepEqual(gravados, [{ texto: 'oi' }]);
+  assert.deepEqual(nativas.map((c) => c.toolName), ['load_capability', 'call_capability']);
 });
 
 /**
