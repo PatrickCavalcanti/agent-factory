@@ -3,6 +3,22 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.3] — 2026-11-16
+
+### Corrigido
+
+- **No protocolo nativo, a função do catálogo chamada pelo nome executa em vez de voltar "Unknown tool".** A
+  orientação de `mensagemDeToolDesconhecida` (0.1) ensinava o caminho, mas a volta não sumiu: no chat do Ariadne o
+  modelo chamou `codigo__ler_codigo` direto no primeiro turno de toda conversa com o manual no prompt (4 de 4 de
+  2026-10-29 a 2026-11-14), e a pessoa via um erro vermelho antes de o turno se corrigir. Agora a fábrica embrulha o
+  provider do turno (`provedorComAtalhoDoCatalogo`, export novo de `.`) e troca, na resposta, a chamada pelo nome do
+  catálogo (nome exposto ou sinônimo cru) por `call_capability({ ref, args })`. A troca acontece antes de o genos
+  executar e gravar o histórico, então eventos, `nativeToolCalls`, `<turn_operations>` e `aoChamada` continuam vendo só
+  `call_capability`; o kairos confere escopo, permissão e argumentos como em qualquer chamada; e o modelo vê no
+  histórico a forma certa. Vale para `generate` e para o `response.completed` do `stream`. Só no nativo, só quando o
+  pedido oferece `call_capability`, e nunca para nome registrado como função nativa. Nome fora do catálogo continua
+  recebendo a orientação de sempre. Envelope e fence não mudam.
+
 ## [0.2.2] — 2026-11-04
 
 ### Adicionado

@@ -488,6 +488,67 @@ export function mensagemDeToolDesconhecida(toolName) {
 }
 
 /**
+ * No nativo a chamada pelo nome do catálogo vira `call_capability` antes de o genos ver a resposta.
+ *
+ * A mensagem acima ensinava o caminho, mas a volta não sumiu: no chat do Ariadne o modelo chamou `codigo__ler_codigo`
+ * direto no primeiro turno de toda conversa com o manual de `codigo` no prompt (4 de 4, de 2026-10-29 a 2026-11-14,
+ * mesmo depois de os textos pararem de citar funções pelo nome). Nos turnos seguintes acerta, porque copia o
+ * `call_capability` do histórico. A pessoa via um erro vermelho e o turno pagava uma ida a mais ao provider.
+ *
+ * A troca é na RESPOSTA do provider porque o genos executa e grava no histórico a mesma lista (`toolCalls` vira
+ * `nativeToolCalls`). Assim, quem lê eventos, histórico e registro de operações continua vendo só `call_capability`; o
+ * kairos confere escopo, permissão e argumentos como em qualquer chamada; e o modelo vê no histórico a forma certa.
+ *
+ * Só troca nome do catálogo (`nomesDoCatalogo`: nome com que o modelo chama → `ref`) que não é função nativa do pedido,
+ * e só quando o pedido oferece `call_capability`. O resto segue como veio (nome fora do catálogo cai em
+ * `mensagemDeToolDesconhecida`).
+ *
+ * @template {{ name: string, model: string, generate: Function, stream?: Function, cancel?: Function }} P
+ * @param {P} provider
+ * @param {Map<string, string>} nomesDoCatalogo
+ * @returns {P}
+ */
+export function provedorComAtalhoDoCatalogo(provider, nomesDoCatalogo) {
+  const pelaPorta = (resposta, pedido) => {
+    if (!resposta?.toolCalls?.length) return resposta;
+    const nativos = new Set((pedido?.tools ?? []).map((t) => t?.name));
+    if (!nativos.has('call_capability')) return resposta;
+    let trocou = false;
+    const toolCalls = resposta.toolCalls.map((chamada) => {
+      const ref = nomesDoCatalogo.get(chamada?.toolName);
+      if (!ref || nativos.has(chamada.toolName)) return chamada;
+      trocou = true;
+      return { ...chamada, toolName: 'call_capability', args: { ref, args: chamada.args ?? {} } };
+    });
+    return trocou ? { ...resposta, toolCalls } : resposta;
+  };
+  // Objeto novo com os campos que o genos lê (`name`, `model`, `capabilities`, `generate`, `stream`, `cancel`), e não
+  // `Object.create(provider)`: método de classe com campo privado quebra quando `this` não é a instância.
+  return {
+    get name() { return provider.name; },
+    get model() { return provider.model; },
+    get capabilities() { return provider.capabilities; },
+    generate: async (pedido) => pelaPorta(await provider.generate(pedido), pedido),
+    ...(typeof provider.stream === 'function' ? {
+      async *stream(pedido) {
+        for await (const evento of provider.stream(pedido)) {
+          yield evento?.type === 'response.completed' ? { ...evento, response: pelaPorta(evento.response, pedido) } : evento;
+        }
+      },
+    } : {}),
+    ...(typeof provider.cancel === 'function' ? { cancel: (requestId) => provider.cancel(requestId) } : {}),
+  };
+}
+
+/** Nome com que o modelo chama cada função do catálogo → `ref` para `call_capability` (nome exposto e sinônimo cru). */
+function nomesDoCatalogoParaAPorta(capacidades) {
+  const expostas = toolsExpostas(capacidades);
+  const nomes = new Map(expostas.map((t) => [t.nome, t.nome]));
+  for (const [cru, nome] of sinonimosCrus(expostas).porCru) nomes.set(cru, nome);
+  return nomes;
+}
+
+/**
  * Q4 (correção do review de qualidade da Fase 2): teto do texto agregado de
  * `enriquecimentoDasFontes.join('\n')` antes de virar o embed 2 — sem ele, N fontes
  * `enriquecer`iam sem limite e o embed 2 pagaria um texto arbitrariamente grande (custo de
@@ -4037,7 +4098,10 @@ export function criarOrquestrador(config) {
       // abaixo vence. Chaves que a fábrica só define condicionalmente (ex.: `pricingResolver`,
       // `validateTurn`) valem do host quando a fábrica não as define.
       ...(config.genos ?? {}),
-      provider: config.provider(ctx),
+      // Nativo: chamada pelo nome do catálogo vira `call_capability` (ver `provedorComAtalhoDoCatalogo`).
+      provider: estrategia.registraCapacidades === false
+        ? provedorComAtalhoDoCatalogo(config.provider(ctx), nomesDoCatalogoParaAPorta(config.capacidades))
+        : config.provider(ctx),
       runStore,
       // N-guarda: `manager`/`carregadasNoTurno` habilitam o guarda a reconsultar,
       // A CADA CHAMADA (não só na montagem), o que `load_capability` trouxe NO
