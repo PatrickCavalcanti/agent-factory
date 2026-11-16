@@ -95,6 +95,32 @@ test('nativo: função do catálogo chamada pelo nome executa pela porta de call
   assert.equal(resultados.some((r) => /Unknown tool/.test(r)), false);
 });
 
+test('nativo em streaming (o chat do Ariadne): a chamada pelo nome também executa pela porta', async () => {
+  let n = 0;
+  let historico = null;
+  const recebidos = [];
+  const cap = [{ id: 'etapa', descricao: 'Etapa.', tools: [{ name: 'ler', description: 'Lê.', schema: z.object({ nome: z.string() }), handler: async (a) => { recebidos.push(a); return { ok: true }; } }] }];
+  const provider = () => ({
+    name: 'fake', model: 'f',
+    capabilities: { streaming: true, usage: false, cancellation: false, structuredOutput: true, nativeTools: true, backgroundRuns: false, preferredToolProtocol: 'provider_native' },
+    async generate() { throw new Error('o turno em streaming não chama generate'); },
+    async *stream(req) {
+      n += 1;
+      if (n === 1) {
+        yield { type: 'response.completed', response: { text: '', stopReason: 'tool_call', toolCalls: [{ id: 't1', toolName: 'etapa__ler', args: { nome: 'x' } }] } };
+        return;
+      }
+      historico = req.messages;
+      yield { type: 'text', text: 'fim' };
+      yield { type: 'response.completed', response: { text: 'fim', stopReason: 'completed' } };
+    },
+  });
+  const orq = criarOrquestrador({ base: () => [], capacidades: cap, protocolo: 'nativo', outputMode: 'streaming', provider, decorarTool: (_n, d) => d });
+  await orq.executarTurno({ texto: 'oi', estado: ESTADO });
+  assert.deepEqual(recebidos, [{ nome: 'x' }]);
+  assert.deepEqual((historico ?? []).flatMap((m) => m?.metadata?.nativeToolCalls ?? []).map((c) => c.toolName), ['call_capability']);
+});
+
 test('nativo: o atalho não pula a permissão do kairos (call_capability confere can)', async () => {
   const { recebidos, resultados } = await turnoComChamadaDireta({
     requires: ['admin'], can: (requires) => !requires || !requires.includes('admin'),
