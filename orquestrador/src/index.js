@@ -23,7 +23,7 @@ import { criarSinalForte, sobeJuntoNaEntrada, protecaoDoDespejo, ehContinuacaoCu
 import { despejar } from './despejo/despejar.js';
 import { horizonte, decidirDespejo } from './despejo/conta.js';
 import { avisoDeDescartadas } from './despejo/aviso.js';
-import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas } from './despejo/comportamento.js';
+import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas, funcoesDoJevDoTurno, funcoesDoJevDeclaradas } from './despejo/comportamento.js';
 import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
 import { resolverProtocolo } from './protocolo/index.js';
@@ -452,6 +452,10 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   só sobe para a memória de trabalho se o modelo a declarar (o host semeia no fecho). Sucesso com `requires: true`
  *   (script, precisa do `skill-system`) ou `jaCarregada: true` segue para `aoSemear`, como sempre. Ausente: o
  *   caminho de sempre (`aoSemear` direto).
+ * @property {(ctx?: object) => unknown[]} [idsDeclaradosNoTurno] Ids que o modelo declarou em
+ *   `_contribuicoes_usadas` neste turno (união das iterações válidas, sem filtrar pela oferta). Lido no fecho,
+ *   antes de decidir o que sobe para o contexto fixo: função do loop do Jev oferecida e declarada conta como uso
+ *   (spec Igris 2026-11-25 §3.2). Ausente ou lançando = nenhuma.
  */
 
 const IDENTIDADE = (_nome, definicao) => definicao;
@@ -3115,7 +3119,7 @@ export function criarOrquestrador(config) {
               } catch (erro) {
                 motivo = String(erro?.message || erro);
               }
-              operacoes.push({ nome, args: argsReais, ok: !motivo, origem: 'jev', ...auditoria, ...(motivo ? { erro: motivo } : {}) });
+              operacoes.push({ nome, ref: `${fn.capacidade}/tool/${fn.tool.name}`, args: argsReais, ok: !motivo, origem: 'jev', ...auditoria, ...(motivo ? { erro: motivo } : {}) });
               // `resultado`: o retorno da leitura, para o host gravar no registro completo (D-1, 10/10) — o Jev não emite
               // `tool.started`, então a captura do host não o pega.
               avisar(config.aoChamada, { fase: 'fim', ok: !motivo, id, nome, args: argsReais, origem: 'jev', resultado: r, ...auditoria, ...(motivo ? { erro: motivo } : {}) });
@@ -3482,7 +3486,7 @@ export function criarOrquestrador(config) {
     }
 
     // Oferta de comportamento do turno (`{ oferecidas, herdadas }`; `undefined` desligado — a saída não ganha a chave).
-    const oferecidasDoTurno = ofertaDoTurno(ofertaDeHabilidades, ofertaDeMemorias);
+    const oferecidasDoTurno = ofertaDoTurno(ofertaDeHabilidades, ofertaDeMemorias, comportamentoNoTurno ? funcoesDoJevDoTurno(operacoes) : []);
     const comportamentoDoTurno = saidaDoComportamento(comportamentoNoTurno, oferecidasDoTurno, herdadasDescartadas, naoFixadasReofertadas, memoriasJaPromovidas, Object.fromEntries(ofertaDeMemorias.map((m) => [m.id, m.texto])));
 
     // Fecha o laço da permanência: o canal `conversation` é stateless, então
@@ -4170,6 +4174,7 @@ export function criarOrquestrador(config) {
       // Uso do turno (spec §4.2), calculado ANTES de fechar o Kairos: o que o modelo usou da cauda HERDADA não veio do
       // discover deste turno e precisa entrar no estado por outro caminho.
       let usadas = [];
+      let usadasDoJevDeclaradas = [];
       let usadasRefs = new Set();
       let usadasCaps = new Set();
       let providersDoModelo = new Set();
@@ -4194,7 +4199,13 @@ export function criarOrquestrador(config) {
         const pedidoPeloModelo = comCarregadasNoTurno({ providers: { load: [] }, tools: { hydrate: [], conscious: [] } }, carregadasNoTurno, manager);
         providersDoModelo = new Set(pedidoPeloModelo.providers?.load ?? []);
         const carregadasPeloModelo = (pedidoPeloModelo.tools?.hydrate ?? []).map((ref) => ({ ref, capId: ref.split('/')[0] }));
-        ({ usadas, usadasRefs, usadasCaps } = usadasDoTurno({ operacoes, recusadas: recusadasNoTurno, nomeParaRef, carregadasPeloModelo }));
+        // Consultas do Jev declaradas pelo modelo contam como uso (spec Igris 2026-11-25 §3.2).
+        let declaradasNoTurno = [];
+        if (comportamentoNoTurno && typeof config.idsDeclaradosNoTurno === 'function') {
+          try { declaradasNoTurno = config.idsDeclaradosNoTurno(ctx) ?? []; } catch { declaradasNoTurno = []; }
+        }
+        usadasDoJevDeclaradas = funcoesDoJevDeclaradas(oferecidasDoTurno, declaradasNoTurno);
+        ({ usadas, usadasRefs, usadasCaps } = usadasDoTurno({ operacoes, recusadas: recusadasNoTurno, nomeParaRef, carregadasPeloModelo: [...carregadasPeloModelo, ...usadasDoJevDeclaradas] }));
       }
       const fechadoPeloModelo = comCarregadasNoTurno(prepared.discoverResult, carregadasNoTurno, manager);
       const kairosFechado = applySessionPolicy(
@@ -4320,7 +4331,9 @@ export function criarOrquestrador(config) {
         skillsComCorpo,
         // Aceite de contribuição (spec 2026-10-29 aceite): `{ oferecidas }` só com `comportamento` ligado (o host lê no
         // fecho do turno, junto do `_contribuicoes_usadas`). Desligado a saída não ganha a chave.
-        ...(comportamentoDoTurno ? { comportamento: comportamentoDoTurno } : {}),
+        // `funcoesDeclaradas` (só quando há): refs de consultas do Jev que o modelo declarou e que contaram como uso (spec Igris
+        // 2026-11-25 §3.2). Sem declaração a saída é a de antes, byte a byte.
+        ...(comportamentoDoTurno ? { comportamento: { ...comportamentoDoTurno, ...(usadasDoJevDeclaradas.length ? { funcoesDeclaradas: usadasDoJevDeclaradas.map((u) => u.ref) } : {}) } } : {}),
         // Task 11 (R11/§3.4): `{ msTotal, degradado, porAnel: { <ring>: { enviados, respondidos,
         // ms, degradado, mudancas } } }` — mesmo valor entregue a `config.aoMontar` (ver
         // comentário lá, e o bloco `const refino = (() => {...})()` mais acima, onde é
