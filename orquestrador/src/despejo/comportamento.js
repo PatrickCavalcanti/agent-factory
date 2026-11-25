@@ -58,9 +58,11 @@ export function conteudoDaHabilidadeSugerida(s) {
  *   `nome`/`origem` (só quando há): de onde veio a oferta, para o card "Habilidade sugerida..." do host (não mudam id/ref/tipo)
  * @param {Array<{ id: string, ref?: string }>} [memorias] memórias que a fonte `memoria` incluiu no turno; o id é o `ref`
  *   do bloco (`memoria/memory/<categoria>.<chave>`), o mesmo `source` do `<info>` que o modelo lê. Memória não herda.
- * @returns {Array<{ tipo: 'habilidade'|'memoria', id: string, ref: string, herdada?: true }>}
+ * @param {Array<{ id: string, ref: string }>} [funcoes] consultas que o loop do Jev executou com sucesso neste turno; o id é
+ *   o nome exposto que o modelo vê no par sintético/`<pre_hidratacao>`, a ref é a interna (`<cap>/tool/<nome>`). Não herda.
+ * @returns {Array<{ tipo: 'habilidade'|'memoria'|'funcao', id: string, ref: string, herdada?: true }>}
  */
-export function ofertaDoTurno(habilidades = [], memorias = []) {
+export function ofertaDoTurno(habilidades = [], memorias = [], funcoes = []) {
   const vistos = new Set();
   const oferecidas = [];
   for (const h of habilidades) {
@@ -77,7 +79,38 @@ export function ofertaDoTurno(habilidades = [], memorias = []) {
     vistos.add(m.id);
     oferecidas.push({ tipo: 'memoria', id: m.id, ref: m.ref ?? m.id });
   }
+  for (const f of funcoes) {
+    if (!f?.id || !f?.ref || vistos.has(f.id)) continue;
+    vistos.add(f.id);
+    oferecidas.push({ tipo: 'funcao', id: f.id, ref: f.ref });
+  }
   return oferecidas;
+}
+
+/**
+ * Consultas do loop do Jev que deram certo neste turno, na forma da oferta: `{ id: <nome exposto>, ref }`.
+ * Spec Igris 2026-11-25 §3.2: a execução do Jev não conta como uso (`registro-de-uso.js`); declarada pelo
+ * modelo em `_contribuicoes_usadas`, conta.
+ * @param {Array<{ nome?: string, ref?: string, ok?: boolean, origem?: string }>|undefined} operacoes
+ * @returns {Array<{ id: string, ref: string }>}
+ */
+export function funcoesDoJevDoTurno(operacoes) {
+  return (Array.isArray(operacoes) ? operacoes : [])
+    .filter((op) => op?.origem === 'jev' && op.ok === true && typeof op.nome === 'string' && op.nome && typeof op.ref === 'string' && op.ref)
+    .map((op) => ({ id: op.nome, ref: op.ref }));
+}
+
+/**
+ * Funções do Jev OFERECIDAS e DECLARADAS pelo modelo, na forma que `usadasDoTurno` aceita (`{ ref, capId }`).
+ * @param {Array<{ tipo: string, id: string, ref: string }>} oferecidas
+ * @param {unknown[]|undefined} declaradas ids crus declarados no turno (união das iterações válidas)
+ * @returns {Array<{ ref: string, capId: string }>}
+ */
+export function funcoesDoJevDeclaradas(oferecidas = [], declaradas = []) {
+  const ids = new Set((Array.isArray(declaradas) ? declaradas : []).filter((d) => typeof d === 'string'));
+  return oferecidas
+    .filter((o) => o?.tipo === 'funcao' && ids.has(o.id))
+    .map((o) => ({ ref: o.ref, capId: o.ref.split('/')[0] }));
 }
 
 /**

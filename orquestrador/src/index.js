@@ -23,7 +23,8 @@ import { criarSinalForte, sobeJuntoNaEntrada, protecaoDoDespejo, ehContinuacaoCu
 import { despejar } from './despejo/despejar.js';
 import { horizonte, decidirDespejo } from './despejo/conta.js';
 import { avisoDeDescartadas } from './despejo/aviso.js';
-import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas } from './despejo/comportamento.js';
+import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas, funcoesDoJevDoTurno, funcoesDoJevDeclaradas } from './despejo/comportamento.js';
+import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
@@ -124,6 +125,10 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   vazio, porque legenda ausente foi o que deixou o catálogo mudo na V2 do
  *   Ariadne. Passe isto quando o host tiver verbo próprio de carregamento para
  *   nomear.
+ * @property {'completo'|'funcoesSugeridas'|'nenhum'} [cartaoSugerido] Formato do card de capacidade CANDIDATA
+ *   no turno (spec Igris 2026-11-25): `completo` (default) lista todas as funções com descrição; `funcoesSugeridas`
+ *   só os nomes das funções que o anel `tool` marcou para o turno (até 5, pela nota); `nenhum` não manda o card
+ *   (o modelo usa o índice). A legenda de `candidatos` acompanha o formato, salvo se o host passar a sua.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -457,6 +462,10 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   só sobe para a memória de trabalho se o modelo a declarar (o host semeia no fecho). Sucesso com `requires: true`
  *   (script, precisa do `skill-system`) ou `jaCarregada: true` segue para `aoSemear`, como sempre. Ausente: o
  *   caminho de sempre (`aoSemear` direto).
+ * @property {(ctx?: object) => unknown[]} [idsDeclaradosNoTurno] Ids que o modelo declarou em
+ *   `_contribuicoes_usadas` neste turno (união das iterações válidas, sem filtrar pela oferta). Lido no fecho,
+ *   antes de decidir o que sobe para o contexto fixo: função do loop do Jev oferecida e declarada conta como uso
+ *   (spec Igris 2026-11-25 §3.2). Ausente ou lançando = nenhuma.
  */
 
 const IDENTIDADE = (_nome, definicao) => definicao;
@@ -1304,10 +1313,15 @@ export function criarOrquestrador(config) {
   // identidade e comportamento abrem o system e a mecânica vai para o catálogo.
   const mecanicaNoCatalogo = config.mecanicaNoCatalogo === true;
   const estrategia = resolverProtocolo(config.protocolo, config.protocoloOpts);
+  const cartaoSugerido = formatoDoCartao(config.cartaoSugerido);
+  const legendaDoFormato = legendaDoCartao(cartaoSugerido);
+  const legendasDoConstrutor = legendaDoFormato && !config.legendas?.candidatos
+    ? { ...(config.legendas ?? {}), candidatos: legendaDoFormato }
+    : config.legendas;
   const construtor = criarConstrutorDePrompt({
     base: (ctx) => [...(ctx.__secoesExtra || []), ...config.base(ctx)],
     ...(mecanicaNoCatalogo ? { mecanicaNoCatalogo: true, estrategia } : {}),
-    ...(config.legendas ? { legendas: config.legendas } : {}),
+    ...(legendasDoConstrutor ? { legendas: legendasDoConstrutor } : {}),
     ...(config.nomes ? { nomes: config.nomes } : {}),
     // Estabilização do cache (spec 2026-10-15): o host escolhe o layout do bloco de capacidades
     // e onde ele pousa na faixa estável. Sem estes campos, o comportamento é o de antes.
@@ -1772,14 +1786,26 @@ export function criarOrquestrador(config) {
    * `system`); enriquecê-lo aqui não cria estado novo para acumular. Assim que
    * a capacidade carrega de verdade, o bloco vira `instrucoes`/`indice` no
    * acumulado e este card não aparece mais no turno seguinte.
+   *
+   * O `formato` (opção `cartaoSugerido`) decide o conteúdo do card: `completo` lista todas as funções,
+   * `funcoesSugeridas` só as que o anel `tool` marcou (`explain`), `nenhum` tira o card.
    */
-  function cardsComFuncoes(manager, blocos) {
+  function cardsComFuncoes(manager, blocos, { formato = 'completo', explain = [] } = {}) {
+    if (formato === 'nenhum') return blocos.filter((bloco) => !bloco.ref.endsWith('/card'));
     return blocos.map((bloco) => {
       if (!bloco.ref.endsWith('/card')) return bloco;
       const providerId = bloco.ref.slice(0, -'/card'.length);
       const tools = manager.registry.listTools(providerId);
       if (tools.length === 0) return bloco;
       const prefixar = prefixarPorCapacidade.get(providerId) ?? true;
+      if (formato === 'funcoesSugeridas') {
+        const chaves = new Set(tools.map((t) => t.key));
+        const nomes = funcoesSugeridasDaCapacidade(explain, providerId)
+          .map((ref) => ref.slice(`${providerId}/tool/`.length))
+          .filter((key) => chaves.has(key))
+          .map((key) => nomeExposto(providerId, key, { prefixar }));
+        return { ...bloco, content: conteudoComFuncoesSugeridas(nomes) };
+      }
       const nomes = tools
         .map((t) => `- ${nomeExposto(t.providerId, t.key, { prefixar })} — ${t.description}`)
         .join('\n');
@@ -3243,7 +3269,7 @@ export function criarOrquestrador(config) {
               } catch (erro) {
                 motivo = String(erro?.message || erro);
               }
-              operacoes.push({ nome, args: argsReais, ok: !motivo, origem: 'jev', ...auditoria, ...(motivo ? { erro: motivo } : {}) });
+              operacoes.push({ nome, ref: `${fn.capacidade}/tool/${fn.tool.name}`, args: argsReais, ok: !motivo, origem: 'jev', ...auditoria, ...(motivo ? { erro: motivo } : {}) });
               // `resultado`: o retorno da leitura, para o host gravar no registro completo (D-1, 10/10) — o Jev não emite
               // `tool.started`, então a captura do host não o pega.
               avisar(config.aoChamada, { fase: 'fim', ok: !motivo, id, nome, args: argsReais, origem: 'jev', resultado: r, ...auditoria, ...(motivo ? { erro: motivo } : {}) });
@@ -3610,7 +3636,7 @@ export function criarOrquestrador(config) {
     }
 
     // Oferta de comportamento do turno (`{ oferecidas, herdadas }`; `undefined` desligado — a saída não ganha a chave).
-    const oferecidasDoTurno = ofertaDoTurno(ofertaDeHabilidades, ofertaDeMemorias);
+    const oferecidasDoTurno = ofertaDoTurno(ofertaDeHabilidades, ofertaDeMemorias, comportamentoNoTurno ? funcoesDoJevDoTurno(operacoes) : []);
     const comportamentoDoTurno = saidaDoComportamento(comportamentoNoTurno, oferecidasDoTurno, herdadasDescartadas, naoFixadasReofertadas, memoriasJaPromovidas, Object.fromEntries(ofertaDeMemorias.map((m) => [m.id, m.texto])));
 
     // Fecha o laço da permanência: o canal `conversation` é stateless, então
@@ -3716,7 +3742,7 @@ export function criarOrquestrador(config) {
       ? cardsComFuncoes(manager, blocks.turn.filter((b) => b.ref.endsWith('/card') && !cardsDoTurno.includes(b)))
       : [];
     const turnoDoTurno = [
-      ...cardsComFuncoes(manager, cardsDoTurno),
+      ...cardsComFuncoes(manager, cardsDoTurno, { formato: cartaoSugerido, explain: prepared.discoverResult.explain }),
       ...contratosExtras,
       ...contratosDoLoopNesteTurno,
       // `incluidos` das fontes (Task 6, spec 2 §3.4 passo 3) — ref de TRÊS partes
@@ -4333,6 +4359,7 @@ export function criarOrquestrador(config) {
       // Uso do turno (spec §4.2), calculado ANTES de fechar o Kairos: o que o modelo usou da cauda HERDADA não veio do
       // discover deste turno e precisa entrar no estado por outro caminho.
       let usadas = [];
+      let usadasDoJevDeclaradas = [];
       let usadasRefs = new Set();
       let usadasCaps = new Set();
       let providersDoModelo = new Set();
@@ -4357,7 +4384,14 @@ export function criarOrquestrador(config) {
         const pedidoPeloModelo = comCarregadasNoTurno({ providers: { load: [] }, tools: { hydrate: [], conscious: [] } }, carregadasNoTurno, manager);
         providersDoModelo = new Set(pedidoPeloModelo.providers?.load ?? []);
         const carregadasPeloModelo = (pedidoPeloModelo.tools?.hydrate ?? []).map((ref) => ({ ref, capId: ref.split('/')[0] }));
-        ({ usadas, usadasRefs, usadasCaps } = usadasDoTurno({ operacoes, recusadas: recusadasNoTurno, nomeParaRef, carregadasPeloModelo }));
+        // Consultas do Jev declaradas pelo modelo contam como uso (spec Igris 2026-11-25 §3.2). Turno cancelado não
+        // promove nada (mesma regra do host: habilidade não fixa em turno cancelado) — nem lê as declarações.
+        let declaradasNoTurno = [];
+        if (comportamentoNoTurno && resultado?.type !== 'cancelled' && typeof config.idsDeclaradosNoTurno === 'function') {
+          try { declaradasNoTurno = config.idsDeclaradosNoTurno(ctx) ?? []; } catch { declaradasNoTurno = []; }
+        }
+        usadasDoJevDeclaradas = funcoesDoJevDeclaradas(oferecidasDoTurno, declaradasNoTurno);
+        ({ usadas, usadasRefs, usadasCaps } = usadasDoTurno({ operacoes, recusadas: recusadasNoTurno, nomeParaRef, carregadasPeloModelo: [...carregadasPeloModelo, ...usadasDoJevDeclaradas] }));
       }
       const fechadoPeloModelo = comCarregadasNoTurno(prepared.discoverResult, carregadasNoTurno, manager);
       const kairosFechado = applySessionPolicy(
@@ -4483,7 +4517,9 @@ export function criarOrquestrador(config) {
         skillsComCorpo,
         // Aceite de contribuição (spec 2026-10-29 aceite): `{ oferecidas }` só com `comportamento` ligado (o host lê no
         // fecho do turno, junto do `_contribuicoes_usadas`). Desligado a saída não ganha a chave.
-        ...(comportamentoDoTurno ? { comportamento: comportamentoDoTurno } : {}),
+        // `funcoesDeclaradas` (só quando há): refs de consultas do Jev que o modelo declarou e que contaram como uso (spec Igris
+        // 2026-11-25 §3.2). Sem declaração a saída é a de antes, byte a byte.
+        ...(comportamentoDoTurno ? { comportamento: { ...comportamentoDoTurno, ...(usadasDoJevDeclaradas.length ? { funcoesDeclaradas: usadasDoJevDeclaradas.map((u) => u.ref) } : {}) } } : {}),
         // Task 11 (R11/§3.4): `{ msTotal, degradado, porAnel: { <ring>: { enviados, respondidos,
         // ms, degradado, mudancas } } }` — mesmo valor entregue a `config.aoMontar` (ver
         // comentário lá, e o bloco `const refino = (() => {...})()` mais acima, onde é

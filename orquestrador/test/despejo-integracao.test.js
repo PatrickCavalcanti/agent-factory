@@ -985,3 +985,78 @@ test('23b. sobe junto (acompanha), sem uso depois: `b` chega ao system no turno 
   assert.ok(!t[1].estado.kairos.hydratedTools.includes('whatsapp/tool/exibir'), 'registro: o Kairos já a largou no turno 2');
   assert.ok(t[3].estado.kairos.loadedProviders.includes('whatsapp'), 'a capacidade segue carregada');
 });
+
+// Spec Igris 2026-11-25 §3.2: a consulta que o Jev executou não conta como uso (registro-de-uso.js); se o modelo a
+// declara em `_contribuicoes_usadas`, o host devolve o id por `idsDeclaradosNoTurno` e ela sobe como se o modelo a tivesse chamado.
+async function turnoComConsultaDoJev({ idsDeclaradosNoTurno, cancelarNaGeracao = false }) {
+  const controlador = new AbortController();
+  const providerBase = providerDeTexto([FECHA]);
+  // Cancelar = o sinal aborta DENTRO de `provider.generate` (o turno fecha como `cancelled`).
+  const provider = cancelarNaGeracao
+    ? (...args) => {
+      const p = providerBase(...args);
+      const gerar = p.generate.bind(p);
+      p.generate = async (...a) => { controlador.abort(); await new Promise((r) => setTimeout(r, 20)); return gerar(...a); };
+      return p;
+    }
+    : providerBase;
+  const embedder = {
+    modelSlug: 'fake-test-v1',
+    async embed(texto) { return texto.includes('PERGUNTA_DO_USUARIO_MARCADOR') || texto.includes('DOC_SEMANTICO_CALENDAR') ? [1, 0] : [0, 0]; },
+  };
+  const rodar = async ({ espaco, executar }) => {
+    const fn = espaco.funcoes.find((f) => f.nome === 'listar_eventos');
+    const resultado = await executar(fn, {});
+    return { estado: 'pronto', rastro: [{ passo: 1, fn: fn.nome, capacidade: fn.capacidade, args: {}, confianca: 0.9, resultado, ms: 1 }], paraOModelo: [], carregadas: [], passos: [], ms: 1 };
+  };
+  const o = criarOrquestrador({
+    base: () => [{ nome: 'identidade', conteudo: '<identidade>A.</identidade>' }],
+    capacidades: [{
+      id: 'agenda', descricao: 'Agenda.', piso: false, prefixarTools: false, semanticText: 'DOC_SEMANTICO_CALENDAR agenda',
+      tools: [
+        { name: 'listar_eventos', description: 'Lista.', effect: 'read', schema: z.object({}).passthrough(), handler: async () => ({ eventos: ['reunião'] }) },
+      ],
+    }],
+    embedder, protocolo: 'envelope', protocoloOpts: { headless: true },
+    provider,
+    decorarTool: (n, d) => d, refinadores: { provider: (input) => ({ full: input.proposal.full, candidates: input.proposal.candidates }) },
+    loop: { rodar, paramsDe: () => [] },
+    despejo: { cauda: true, comportamento: true },
+    aoPrepararHabilidade: async () => ({ sucessos: [], falhas: [] }),
+    ...(idsDeclaradosNoTurno ? { idsDeclaradosNoTurno } : {}),
+  });
+  const t1 = await o.executarTurno({ texto: 'PERGUNTA_DO_USUARIO_MARCADOR agenda amanhã', estado: ESTADO_INICIAL, ...(cancelarNaGeracao ? { abortSignal: controlador.signal } : {}) });
+  await o.fechar();
+  return t1;
+}
+
+test('27. consulta do Jev declarada em _contribuicoes_usadas conta como uso: sobe, e a capacidade entra no Kairos', async () => {
+  const ids = [];
+  const t1 = await turnoComConsultaDoJev({ idsDeclaradosNoTurno: (ctx) => { ids.push(typeof ctx); return ['listar_eventos']; } });
+  assert.ok(t1.operacoes.some((op) => op.origem === 'jev' && op.ref === 'agenda/tool/listar_eventos' && op.ok), 'pré-condição: o Jev executou');
+  assert.deepEqual(t1.comportamento.oferecidas.filter((x) => x.tipo === 'funcao'), [{ tipo: 'funcao', id: 'listar_eventos', ref: 'agenda/tool/listar_eventos' }]);
+  assert.deepEqual(t1.comportamento.funcoesDeclaradas, ['agenda/tool/listar_eventos']);
+  assert.ok(t1.despejo.promovidas.includes('agenda/tool/listar_eventos'));
+  assert.ok(t1.estado.kairos.hydratedTools.includes('agenda/tool/listar_eventos'));
+  assert.ok(t1.estado.kairos.loadedProviders.includes('agenda'), 'a capacidade sobe junto com a função declarada');
+  assert.deepEqual(ids, ['object'], 'o callback recebe o ctx do turno');
+});
+
+test('27b. consulta do Jev NÃO declarada: regra de hoje (não conta como uso), com callback vazio, ausente ou lançando', async () => {
+  for (const idsDeclaradosNoTurno of [() => [], undefined, () => { throw new Error('boom'); }, () => ['inventada']]) {
+    const t1 = await turnoComConsultaDoJev({ idsDeclaradosNoTurno });
+    assert.ok(t1.operacoes.some((op) => op.origem === 'jev' && op.ok), 'pré-condição: o Jev executou');
+    assert.equal(t1.comportamento.funcoesDeclaradas, undefined, 'sem declaração a saída não ganha a chave');
+    assert.ok(!t1.despejo.promovidas.includes('agenda/tool/listar_eventos'));
+    assert.ok(!t1.estado.kairos.hydratedTools.includes('agenda/tool/listar_eventos'));
+  }
+});
+
+test('27c. turno cancelado não promove a consulta do Jev declarada: o callback nem é lido', async () => {
+  let chamadas = 0;
+  const t1 = await turnoComConsultaDoJev({ cancelarNaGeracao: true, idsDeclaradosNoTurno: () => { chamadas += 1; return ['listar_eventos']; } });
+  assert.equal(t1.resultado.type, 'cancelled', 'pré-condição: o turno fechou cancelado');
+  assert.equal(chamadas, 0, 'cancelado: as declarações não são lidas');
+  assert.ok(!t1.despejo?.promovidas?.includes('agenda/tool/listar_eventos'));
+  assert.equal(t1.comportamento?.funcoesDeclaradas, undefined);
+});

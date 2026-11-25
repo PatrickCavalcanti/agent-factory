@@ -3,6 +3,26 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.4] — 2026-11-25
+
+Leva à linha 0.2.x as mudanças da 0.1.1 (ramo `release/0.1.x`).
+
+### Adicionado
+
+- `config.cartaoSugerido`: `completo` (padrão, o card de sempre) | `funcoesSugeridas` (só os nomes das funções
+  que o anel `tool` marcou para o turno, até 5, pela nota) | `nenhum` (sem card de candidata). A legenda de
+  `candidatos` acompanha o formato, salvo se o host passar a sua. Cards de capacidade já carregada que voltam com a
+  cauda ficam sempre completos (`1365060`, `fa1a2db`).
+- `config.idsDeclaradosNoTurno(ctx)`: consulta feita pelo loop do Jev entra na oferta de `_contribuicoes_usadas`
+  como tipo `funcao`; oferecida E declarada pelo modelo, conta como uso no fecho do despejo (sobe para o contexto
+  fixo). Turno cancelado não promove. `comportamento.funcoesDeclaradas` só aparece quando há declaração; a operação
+  do Jev ganha `ref` (`83c5dc9`, `50d6044`).
+
+### Atenção para hosts sem índice próprio de capacidades
+
+- Com `nenhum` (ou com a legenda de `funcoesSugeridas`), a candidata só é achável pelo índice; o índice interno do
+  orquestrador lista só `tools.conscious`. O Igris tem índice próprio com todas as capacidades.
+
 ## [0.2.3] — 2026-11-16
 
 ### Corrigido
