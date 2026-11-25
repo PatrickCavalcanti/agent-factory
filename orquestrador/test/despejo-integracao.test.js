@@ -988,7 +988,18 @@ test('23b. sobe junto (acompanha), sem uso depois: `b` chega ao system no turno 
 
 // Spec Igris 2026-11-25 §3.2: a consulta que o Jev executou não conta como uso (registro-de-uso.js); se o modelo a
 // declara em `_contribuicoes_usadas`, o host devolve o id por `idsDeclaradosNoTurno` e ela sobe como se o modelo a tivesse chamado.
-async function turnoComConsultaDoJev({ idsDeclaradosNoTurno }) {
+async function turnoComConsultaDoJev({ idsDeclaradosNoTurno, cancelarNaGeracao = false }) {
+  const controlador = new AbortController();
+  const providerBase = providerDeTexto([FECHA]);
+  // Cancelar = o sinal aborta DENTRO de `provider.generate` (o turno fecha como `cancelled`).
+  const provider = cancelarNaGeracao
+    ? (...args) => {
+      const p = providerBase(...args);
+      const gerar = p.generate.bind(p);
+      p.generate = async (...a) => { controlador.abort(); await new Promise((r) => setTimeout(r, 20)); return gerar(...a); };
+      return p;
+    }
+    : providerBase;
   const embedder = {
     modelSlug: 'fake-test-v1',
     async embed(texto) { return texto.includes('PERGUNTA_DO_USUARIO_MARCADOR') || texto.includes('DOC_SEMANTICO_CALENDAR') ? [1, 0] : [0, 0]; },
@@ -1007,14 +1018,14 @@ async function turnoComConsultaDoJev({ idsDeclaradosNoTurno }) {
       ],
     }],
     embedder, protocolo: 'envelope', protocoloOpts: { headless: true },
-    provider: providerDeTexto([FECHA]),
+    provider,
     decorarTool: (n, d) => d, refinadores: { provider: (input) => ({ full: input.proposal.full, candidates: input.proposal.candidates }) },
     loop: { rodar, paramsDe: () => [] },
     despejo: { cauda: true, comportamento: true },
     aoPrepararHabilidade: async () => ({ sucessos: [], falhas: [] }),
     ...(idsDeclaradosNoTurno ? { idsDeclaradosNoTurno } : {}),
   });
-  const t1 = await o.executarTurno({ texto: 'PERGUNTA_DO_USUARIO_MARCADOR agenda amanhã', estado: ESTADO_INICIAL });
+  const t1 = await o.executarTurno({ texto: 'PERGUNTA_DO_USUARIO_MARCADOR agenda amanhã', estado: ESTADO_INICIAL, ...(cancelarNaGeracao ? { abortSignal: controlador.signal } : {}) });
   await o.fechar();
   return t1;
 }
@@ -1039,4 +1050,13 @@ test('27b. consulta do Jev NÃO declarada: regra de hoje (não conta como uso), 
     assert.ok(!t1.despejo.promovidas.includes('agenda/tool/listar_eventos'));
     assert.ok(!t1.estado.kairos.hydratedTools.includes('agenda/tool/listar_eventos'));
   }
+});
+
+test('27c. turno cancelado não promove a consulta do Jev declarada: o callback nem é lido', async () => {
+  let chamadas = 0;
+  const t1 = await turnoComConsultaDoJev({ cancelarNaGeracao: true, idsDeclaradosNoTurno: () => { chamadas += 1; return ['listar_eventos']; } });
+  assert.equal(t1.resultado.type, 'cancelled', 'pré-condição: o turno fechou cancelado');
+  assert.equal(chamadas, 0, 'cancelado: as declarações não são lidas');
+  assert.ok(!t1.despejo?.promovidas?.includes('agenda/tool/listar_eventos'));
+  assert.equal(t1.comportamento?.funcoesDeclaradas, undefined);
 });
