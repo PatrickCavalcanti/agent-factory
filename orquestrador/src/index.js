@@ -24,6 +24,7 @@ import { despejar } from './despejo/despejar.js';
 import { horizonte, decidirDespejo } from './despejo/conta.js';
 import { avisoDeDescartadas } from './despejo/aviso.js';
 import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas } from './despejo/comportamento.js';
+import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
@@ -124,6 +125,10 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   vazio, porque legenda ausente foi o que deixou o catálogo mudo na V2 do
  *   Ariadne. Passe isto quando o host tiver verbo próprio de carregamento para
  *   nomear.
+ * @property {'completo'|'funcoesSugeridas'|'nenhum'} [cartaoSugerido] Formato do card de capacidade CANDIDATA
+ *   no turno (spec Igris 2026-11-25): `completo` (default) lista todas as funções com descrição; `funcoesSugeridas`
+ *   só os nomes das funções que o anel `tool` marcou para o turno (até 5, pela nota); `nenhum` não manda o card
+ *   (o modelo usa o índice). A legenda de `candidatos` acompanha o formato, salvo se o host passar a sua.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -1304,10 +1309,15 @@ export function criarOrquestrador(config) {
   // identidade e comportamento abrem o system e a mecânica vai para o catálogo.
   const mecanicaNoCatalogo = config.mecanicaNoCatalogo === true;
   const estrategia = resolverProtocolo(config.protocolo, config.protocoloOpts);
+  const cartaoSugerido = formatoDoCartao(config.cartaoSugerido);
+  const legendaDoFormato = legendaDoCartao(cartaoSugerido);
+  const legendasDoConstrutor = legendaDoFormato && !config.legendas?.candidatos
+    ? { ...(config.legendas ?? {}), candidatos: legendaDoFormato }
+    : config.legendas;
   const construtor = criarConstrutorDePrompt({
     base: (ctx) => [...(ctx.__secoesExtra || []), ...config.base(ctx)],
     ...(mecanicaNoCatalogo ? { mecanicaNoCatalogo: true, estrategia } : {}),
-    ...(config.legendas ? { legendas: config.legendas } : {}),
+    ...(legendasDoConstrutor ? { legendas: legendasDoConstrutor } : {}),
     ...(config.nomes ? { nomes: config.nomes } : {}),
     // Estabilização do cache (spec 2026-10-15): o host escolhe o layout do bloco de capacidades
     // e onde ele pousa na faixa estável. Sem estes campos, o comportamento é o de antes.
@@ -1772,14 +1782,26 @@ export function criarOrquestrador(config) {
    * `system`); enriquecê-lo aqui não cria estado novo para acumular. Assim que
    * a capacidade carrega de verdade, o bloco vira `instrucoes`/`indice` no
    * acumulado e este card não aparece mais no turno seguinte.
+   *
+   * O `formato` (opção `cartaoSugerido`) decide o conteúdo do card: `completo` lista todas as funções,
+   * `funcoesSugeridas` só as que o anel `tool` marcou (`explain`), `nenhum` tira o card.
    */
-  function cardsComFuncoes(manager, blocos) {
+  function cardsComFuncoes(manager, blocos, { formato = 'completo', explain = [] } = {}) {
+    if (formato === 'nenhum') return blocos.filter((bloco) => !bloco.ref.endsWith('/card'));
     return blocos.map((bloco) => {
       if (!bloco.ref.endsWith('/card')) return bloco;
       const providerId = bloco.ref.slice(0, -'/card'.length);
       const tools = manager.registry.listTools(providerId);
       if (tools.length === 0) return bloco;
       const prefixar = prefixarPorCapacidade.get(providerId) ?? true;
+      if (formato === 'funcoesSugeridas') {
+        const chaves = new Set(tools.map((t) => t.key));
+        const nomes = funcoesSugeridasDaCapacidade(explain, providerId)
+          .map((ref) => ref.slice(`${providerId}/tool/`.length))
+          .filter((key) => chaves.has(key))
+          .map((key) => nomeExposto(providerId, key, { prefixar }));
+        return { ...bloco, content: conteudoComFuncoesSugeridas(nomes) };
+      }
       const nomes = tools
         .map((t) => `- ${nomeExposto(t.providerId, t.key, { prefixar })} — ${t.description}`)
         .join('\n');
@@ -3716,7 +3738,7 @@ export function criarOrquestrador(config) {
       ? cardsComFuncoes(manager, blocks.turn.filter((b) => b.ref.endsWith('/card') && !cardsDoTurno.includes(b)))
       : [];
     const turnoDoTurno = [
-      ...cardsComFuncoes(manager, cardsDoTurno),
+      ...cardsComFuncoes(manager, cardsDoTurno, { formato: cartaoSugerido, explain: prepared.discoverResult.explain }),
       ...contratosExtras,
       ...contratosDoLoopNesteTurno,
       // `incluidos` das fontes (Task 6, spec 2 §3.4 passo 3) — ref de TRÊS partes
