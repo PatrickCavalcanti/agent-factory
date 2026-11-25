@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas, motivoCurtoDeFalha,
+  funcoesDoJevDoTurno, funcoesDoJevDeclaradas,
 } from '../src/despejo/comportamento.js';
 
 test('notaDeNaoFixadas: um bloco <nao_fixadas>, uma linha por habilidade, com nome, id e motivo', () => {
@@ -110,4 +111,37 @@ test('ofertaDoTurno: nome e origem passam quando há (para o card do host); id/r
     { tipo: 'habilidade', id: 'b', ref: 'b', herdada: true, origem: 'herdada' },
     { tipo: 'habilidade', id: 'c', ref: 'c' },
   ]);
+});
+
+test('ofertaDoTurno aceita funções do Jev como tipo funcao, sem repetir id de habilidade/memória', () => {
+  const o = ofertaDoTurno(
+    [{ id: 'h1', ref: 'p/skill/h1' }],
+    [{ id: 'memoria/memory/a.b' }],
+    [{ id: 'gcal__listar', ref: 'gcal/tool/listar' }, { id: 'gcal__listar', ref: 'gcal/tool/listar' }, { id: 'h1', ref: 'x/tool/h1' }, { id: '', ref: 'y/tool/z' }],
+  );
+  assert.deepEqual(o.map((x) => [x.tipo, x.id, x.ref]), [
+    ['habilidade', 'h1', 'p/skill/h1'],
+    ['memoria', 'memoria/memory/a.b', 'memoria/memory/a.b'],
+    ['funcao', 'gcal__listar', 'gcal/tool/listar'],
+  ]);
+});
+
+test('funcoesDoJevDoTurno: só operação do Jev com ok e ref; id = nome exposto', () => {
+  assert.deepEqual(funcoesDoJevDoTurno([
+    { nome: 'gcal__listar', ref: 'gcal/tool/listar', ok: true, origem: 'jev' },
+    { nome: 'gcal__ver', ref: 'gcal/tool/ver', ok: false, origem: 'jev' },
+    { nome: 'gcal__editar', ref: 'gcal/tool/editar', ok: true },
+    { nome: 'sem_ref', ok: true, origem: 'jev' },
+  ]), [{ id: 'gcal__listar', ref: 'gcal/tool/listar' }]);
+  assert.deepEqual(funcoesDoJevDoTurno(undefined), []);
+});
+
+test('funcoesDoJevDeclaradas: só funcao oferecida E declarada; vira { ref, capId }', () => {
+  const oferecidas = [
+    { tipo: 'funcao', id: 'gcal__listar', ref: 'gcal/tool/listar' },
+    { tipo: 'funcao', id: 'gcal__ver', ref: 'gcal/tool/ver' },
+    { tipo: 'habilidade', id: 'h1', ref: 'p/skill/h1' },
+  ];
+  assert.deepEqual(funcoesDoJevDeclaradas(oferecidas, ['gcal__listar', 'h1', 'inventada', 42]), [{ ref: 'gcal/tool/listar', capId: 'gcal' }]);
+  assert.deepEqual(funcoesDoJevDeclaradas(oferecidas, undefined), []);
 });
