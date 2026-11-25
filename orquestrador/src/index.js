@@ -4384,9 +4384,10 @@ export function criarOrquestrador(config) {
         const pedidoPeloModelo = comCarregadasNoTurno({ providers: { load: [] }, tools: { hydrate: [], conscious: [] } }, carregadasNoTurno, manager);
         providersDoModelo = new Set(pedidoPeloModelo.providers?.load ?? []);
         const carregadasPeloModelo = (pedidoPeloModelo.tools?.hydrate ?? []).map((ref) => ({ ref, capId: ref.split('/')[0] }));
-        // Consultas do Jev declaradas pelo modelo contam como uso (spec Igris 2026-11-25 §3.2).
+        // Consultas do Jev declaradas pelo modelo contam como uso (spec Igris 2026-11-25 §3.2). Turno cancelado não
+        // promove nada (mesma regra do host: habilidade não fixa em turno cancelado) — nem lê as declarações.
         let declaradasNoTurno = [];
-        if (comportamentoNoTurno && typeof config.idsDeclaradosNoTurno === 'function') {
+        if (comportamentoNoTurno && resultado?.type !== 'cancelled' && typeof config.idsDeclaradosNoTurno === 'function') {
           try { declaradasNoTurno = config.idsDeclaradosNoTurno(ctx) ?? []; } catch { declaradasNoTurno = []; }
         }
         usadasDoJevDeclaradas = funcoesDoJevDeclaradas(oferecidasDoTurno, declaradasNoTurno);
