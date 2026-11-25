@@ -122,7 +122,7 @@ function capacidades() {
  *  marcador do embedder controlado — ver o docblock de `embedderVetorial`. */
 const PERGUNTA = 'PERGUNTA_DO_USUARIO_MARCADOR preciso organizar minhas coisas pessoais esta semana';
 
-function montarOrquestrador(textosDoProvider) {
+function montarOrquestrador(textosDoProvider, extra = {}) {
   return criarOrquestrador({
     base: () => [{ nome: 'identidade', conteudo: '<identidade>Agente de teste.</identidade>' }],
     capacidades: capacidades(),
@@ -131,6 +131,7 @@ function montarOrquestrador(textosDoProvider) {
     protocoloOpts: { headless: true },
     provider: providerDeTexto(textosDoProvider),
     decorarTool: DECORAR_TOOL_NO_OP,
+    ...extra,
   });
 }
 
@@ -241,4 +242,57 @@ test('search_capabilities devolve o NOME EXPOSTO, o mesmo que o prompt anuncia',
     'a busca devolveu a ref INTERNA — o modelo passa a ver duas grafias da mesma função',
   );
   assert.match(retorno, /"ref"\s*:\s*"[a-z_]+"/, 'a busca devolveu algo que não é o nome exposto');
+});
+
+/**
+ * Opção `cartaoSugerido` (spec Igris 2026-11-25): o formato do card de capacidade CANDIDATA.
+ * `completo` (default) é o que os testes acima já medem.
+ */
+test('cartaoSugerido "nenhum": a mensagem do turno não traz a seção de sugeridas nem os nomes das funções de lembretes', async () => {
+  const orq = montarOrquestrador([FECHA], { cartaoSugerido: 'nenhum' });
+  const { payload, discover } = await orq.executarTurno({ texto: PERGUNTA, estado: ESTADO_INICIAL });
+  await orq.fechar();
+
+  assert.ok((discover.providers?.candidates ?? []).some((c) => c.id === 'lembretes'), 'pré-condição: "lembretes" candidata');
+  assert.doesNotMatch(payload.mensagemDoTurno, /suggested_capabilities/, 'a seção (nem vazia) não pode aparecer');
+  assert.doesNotMatch(payload.mensagemDoTurno, /lembretes__criar|lembretes__listar/, 'nome de função de lembretes vazou');
+});
+
+test('cartaoSugerido "funcoesSugeridas" sem refinador de tool: card sem lista de funções e legenda do formato', async () => {
+  const orq = montarOrquestrador([FECHA], { cartaoSugerido: 'funcoesSugeridas' });
+  const { payload, discover } = await orq.executarTurno({ texto: PERGUNTA, estado: ESTADO_INICIAL });
+  await orq.fechar();
+
+  assert.ok((discover.providers?.candidates ?? []).some((c) => c.id === 'lembretes'), 'pré-condição: "lembretes" candidata');
+  const msg = payload.mensagemDoTurno;
+  assert.match(msg, /<suggested_capabilities>/);
+  assert.match(msg, /Capacidade sugerida; funções no índice de capacidades\./);
+  assert.doesNotMatch(msg, /Funções desta capacidade:/);
+  assert.match(msg, /mais prováveis/, 'a legenda de candidatos deveria ser a do formato');
+});
+
+test('cartaoSugerido inválido: criarOrquestrador lança', () => {
+  assert.throws(() => montarOrquestrador([FECHA], { cartaoSugerido: 'resumido' }), /cartaoSugerido inválido/);
+});
+
+test('cartaoSugerido "funcoesSugeridas" com refinador de tool: o card traz só o nome exposto da função que o anel marcou', async () => {
+  // O embedder do harness dá vetor 0 às tools, então o ranking descarta as de `lembretes`; o refinador
+  // do anel `tool` promove só `listar` — o card tem de citar essa e não a `criar`.
+  const orq = montarOrquestrador([FECHA], {
+    cartaoSugerido: 'funcoesSugeridas',
+    refinadores: {
+      tool: (input) => ({
+        full: input.proposal.full,
+        candidates: [...new Set([...input.proposal.candidates, 'lembretes/tool/listar'])],
+      }),
+    },
+  });
+  const { payload, discover } = await orq.executarTurno({ texto: PERGUNTA, estado: ESTADO_INICIAL });
+  await orq.fechar();
+
+  assert.ok((discover.providers?.candidates ?? []).some((c) => c.id === 'lembretes'), 'pré-condição: "lembretes" candidata');
+  const msg = payload.mensagemDoTurno;
+  assert.match(msg, /Funções sugeridas: lembretes__listar(?![\w,])/, `card sem a função marcada; msg=${msg}`);
+  assert.doesNotMatch(msg, /lembretes__criar/);
+  assert.doesNotMatch(msg, /Funções desta capacidade:/);
 });
