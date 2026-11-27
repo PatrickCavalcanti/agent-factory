@@ -143,3 +143,63 @@ test('host sem `chaves` em nenhuma contribuição e sem `config.chaves`: system 
   assert.ok(a.payload.system.includes('TEXTO_BASE'));
   assert.ok(!('chaves' in infos[0]), 'sem contribuição com chave, o payload do aoMontar não ganha campo novo');
 });
+
+// --- semanticaSemChave / limiaresDeConversa --------------------------------------------------------
+
+const TEXTO_SEM_RELACAO = 'preciso entender o estado atual do projeto antes de continuar o trabalho';
+const GRAFICO_SEMANTICO = piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', {
+  chaves: ['grafico'], priority: 20, semanticText: 'gráfico, indicador, dashboard',
+});
+const refsDeConversa = (discover) => discover.explain.filter((e) => e.ring === 'conversation').map((e) => e.ref);
+
+test('semanticaSemChave: a contribuição que não bateu vira item de conversa `chave/<kind>/<chave>` com o texto dela', async () => {
+  const itens = [];
+  const orq = fabrica({
+    contribuicoes: [BASE, GRAFICO_SEMANTICO],
+    chaves: (ctx) => ctx.chaves,
+    semanticaSemChave: true,
+    limiaresDeConversa: { include: 0, candidate: 0 },
+    aoIncluirConversa: (ctx, refs) => itens.push(refs),
+  });
+  const { discover, payload } = await orq.executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: [] }, estado: ESTADO_INICIAL });
+  assert.ok(refsDeConversa(discover).includes('chave/regra/grafico'), 'o item semântico não chegou ao kairos');
+  assert.deepEqual(itens[0], ['chave/regra/grafico']);
+  assert.ok(payload.system.includes('TEXTO_GRAFICO') || payload.mensagemDoTurno.includes('TEXTO_GRAFICO'),
+    'o texto da contribuição tem de chegar ao prompt pelo canal semântico');
+});
+
+test('semanticaSemChave: com a chave no turno, o item semântico NÃO é emitido (a contribuição entra como piso)', async () => {
+  const orq = fabrica({
+    contribuicoes: [BASE, GRAFICO_SEMANTICO],
+    chaves: (ctx) => ctx.chaves,
+    semanticaSemChave: true,
+  });
+  const { discover, payload } = await orq.executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: ['grafico'] }, estado: ESTADO_INICIAL });
+  assert.ok(!refsDeConversa(discover).includes('chave/regra/grafico'));
+  assert.ok(payload.system.includes('TEXTO_GRAFICO'));
+});
+
+test('semanticaSemChave: sem `semanticText` na contribuição, nada é emitido; desligado (padrão), também não', async () => {
+  const semTexto = piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', { chaves: ['grafico'], priority: 20 });
+  const a = await fabrica({ contribuicoes: [BASE, semTexto], chaves: (ctx) => ctx.chaves, semanticaSemChave: true })
+    .executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: [] }, estado: ESTADO_INICIAL });
+  assert.ok(!refsDeConversa(a.discover).some((r) => r.startsWith('chave/')));
+
+  const b = await fabrica({ contribuicoes: [BASE, GRAFICO_SEMANTICO], chaves: (ctx) => ctx.chaves })
+    .executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: [] }, estado: ESTADO_INICIAL });
+  assert.ok(!refsDeConversa(b.discover).some((r) => r.startsWith('chave/')));
+});
+
+test('limiaresDeConversa chega ao kairos como os cortes de conversa do turno', async () => {
+  const comum = {
+    contribuicoes: [BASE, GRAFICO_SEMANTICO], chaves: (ctx) => ctx.chaves, semanticaSemChave: true,
+  };
+  const incluidas = async (extra) => {
+    const refs = [];
+    await fabrica({ ...comum, ...extra, aoIncluirConversa: (ctx, r) => refs.push(...r) })
+      .executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: [] }, estado: ESTADO_INICIAL });
+    return refs;
+  };
+  assert.deepEqual(await incluidas({}), [], 'com os cortes padrão, o texto sem relação não puxa o item');
+  assert.deepEqual(await incluidas({ limiaresDeConversa: { include: 0, candidate: 0 } }), ['chave/regra/grafico']);
+});

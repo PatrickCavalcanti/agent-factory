@@ -123,7 +123,7 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   `chave/<kind>/<último segmento do ref>`): ainda pode entrar se a conversa pedir o assunto, pelo
  *   ranking semântico. Padrão desligado.
  * @property {{ include?: number, candidate?: number }} [limiaresDeConversa] Cortes do canal de conversa
- *   deste turno (nomes do kairos: ver `executarTurno`). Ausente = defaults do kairos.
+ *   deste turno (`threshold`/`candidateThreshold` do `conversation` do kairos). Ausente = defaults do kairos.
  * @property {(ctx: any) => string[]} [refsVolateis] Refs de CONTRIBUIÇÃO (não de tool) cujo
  *   `read(ctx)` produz um valor diferente a cada turno (ex.: lê a tela aberta, um contador). São
  *   as que precisam ser RECALCULADAS — não só reexibidas — quando o discover é pulado por texto
@@ -731,6 +731,19 @@ export function opcoesDeSemantica(semantica) {
 function chavesDoTurno(config, ctx, declaradas) {
   if (config.chaves) return [...(config.chaves(ctx) ?? [])];
   return [...(config.catalogoDeChaves ?? declaradas)];
+}
+
+/**
+ * `config.limiaresDeConversa` (`include`/`candidate`) → cortes do canal de conversa do kairos
+ * (`conversation.threshold`/`candidateThreshold`). Só entram as chaves declaradas: ausente = defaults
+ * do kairos, e o `prepareTurn` sai idêntico ao de antes.
+ * @param {{ include?: number, candidate?: number } | undefined} limiares
+ */
+function cortesDeConversa(limiares) {
+  return {
+    ...(limiares?.include !== undefined ? { threshold: limiares.include } : {}),
+    ...(limiares?.candidate !== undefined ? { candidateThreshold: limiares.candidate } : {}),
+  };
 }
 
 /**
@@ -2005,7 +2018,7 @@ export function criarOrquestrador(config) {
       limits: { tools: limiteDeTools },
       turn: estadoAnterior.turno,
       ...comVetores,
-      ...(itensDeConversa.length ? { conversation: { items: itensDeConversa } } : {}),
+      ...(itensDeConversa.length ? { conversation: { items: itensDeConversa, ...cortesDeConversa(config.limiaresDeConversa) } } : {}),
     });
     return { discoverAumentado, prepared };
   }
@@ -2586,6 +2599,32 @@ export function criarOrquestrador(config) {
       }
     }
 
+    // `semanticaSemChave` (opt-in): a contribuição de piso com `chaves` que NÃO bateu neste turno e
+    // declara `semanticText` ainda pode entrar se a conversa pedir o assunto — vira item do canal
+    // de conversa, com `ref` `chave/<kind>/<último segmento do ref>` (outra origem: o ref do piso
+    // é o da contribuição que ficou de fora). O `read` é o original, contra o `ctx` DESTE turno.
+    if (config.semanticaSemChave) {
+      for (const c of comChave) {
+        if (c.semanticText === undefined || !refsComChaveQueFicaram.includes(c.ref)) continue;
+        try {
+          const content = await c.read(ctx);
+          itensDeConversa.push({
+            ref: `chave/${c.kind ?? c.ref.split('/')[1]}/${c.ref.split('/').pop()}`,
+            content,
+            semanticText: c.semanticText,
+            destination: 'turn:context',
+            ...(c.title !== undefined ? { title: c.title } : {}),
+            ...(c.description !== undefined ? { description: c.description } : {}),
+            ...(c.priority !== undefined ? { priority: c.priority } : {}),
+            ...(c.threshold !== undefined ? { threshold: c.threshold } : {}),
+            ...(c.requires !== undefined ? { requires: c.requires } : {}),
+          });
+        } catch (erro) {
+          errosDeLeituraSemantica.push({ ref: c.ref, error: String(erro) });
+        }
+      }
+    }
+
     // `config.conversa(ctx)` — itens DINÂMICOS do canal de conversa, montados
     // pelo HOST a cada turno (registro aberto na tela, emissão em curso — o
     // que muda turno a turno e não faria sentido como contribuição de piso
@@ -3103,7 +3142,7 @@ export function criarOrquestrador(config) {
         // Só quando há item: um `conversation: { items: [] }` presente muda a
         // saída do discover (`conversationHadInput`, ver kairos) mesmo sem
         // nada para avaliar — mesma forma condicional de `motor.ts:618`.
-        ...(itensDeConversa.length ? { conversation: { items: itensDeConversa } } : {}),
+        ...(itensDeConversa.length ? { conversation: { items: itensDeConversa, ...cortesDeConversa(config.limiaresDeConversa) } } : {}),
       });
       tempos.discoverInicial.total = Date.now() - t0DiscoverInicial;
       // Neste ponto `eventosDoKairos` só pode ter eventos DESTE `prepareTurn` — nenhum
