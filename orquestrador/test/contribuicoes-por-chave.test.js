@@ -40,7 +40,8 @@ const piso = (ref, texto, extra = {}) => ({
 });
 
 const BASE = piso('informacoes/regra/base', 'TEXTO_BASE');
-const GRAFICO = piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', { chaves: ['grafico'], priority: 20 });
+// Sem `volatil`: com `chaves` ele é dispensado (a contribuição é volátil por definição).
+const GRAFICO = (({ volatil: _volatil, ...resto }) => resto)(piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', { chaves: ['grafico'], priority: 20 }));
 
 function fabrica(extra = {}) {
   return criarOrquestrador({
@@ -78,9 +79,11 @@ test('turno trivial (discover pulado) também relê a contribuição com chave',
   assert.ok(!t1.payload.system.includes('TEXTO_GRAFICO'));
 
   const t2 = await orq.executarTurno({ texto: 'x', ctx: { chaves: ['grafico'] }, estado: t1.estado });
+  assert.ok(t2.discover.unchanged, 'o turno 2 tem de ser trivial (discover pulado) para provar a reconstrução');
   assert.ok(t2.payload.system.includes('TEXTO_GRAFICO'), 'a chave chegou num turno trivial: tem de entrar');
 
   const t3 = await orq.executarTurno({ texto: 'x', ctx: { chaves: [] }, estado: t2.estado });
+  assert.ok(t3.discover.unchanged, 'o turno 3 tem de ser trivial (discover pulado)');
   assert.ok(!t3.payload.system.includes('TEXTO_GRAFICO'), 'a chave saiu num turno trivial: tem de sair');
   assert.ok(t3.payload.system.includes('TEXTO_BASE'));
 });
@@ -133,15 +136,34 @@ test('`aoMontar` traz `chaves: { doTurno, entraram, ficaram }`', async () => {
   });
 });
 
-test('host sem `chaves` em nenhuma contribuição e sem `config.chaves`: system idêntico e `aoMontar` sem a chave `chaves`', async () => {
+test('host sem `chaves` em nenhuma contribuição e sem `config.chaves`: `aoMontar` sem a chave `chaves`', async () => {
   const infos = [];
-  const semNada = fabrica({ contribuicoes: [BASE], aoMontar: (i) => infos.push(i) });
-  const a = await semNada.executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
-  const b = await fabrica({ contribuicoes: [BASE], chaves: () => ['qualquer'], catalogoDeChaves: ['qualquer'] })
+  const { payload } = await fabrica({ contribuicoes: [BASE], aoMontar: (i) => infos.push(i) })
     .executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
-  assert.equal(a.payload.system, b.payload.system, 'ligar `chaves`/`catalogoDeChaves` sem contribuição com chave não muda o system');
-  assert.ok(a.payload.system.includes('TEXTO_BASE'));
+  assert.ok(payload.system.includes('TEXTO_BASE'));
   assert.ok(!('chaves' in infos[0]), 'sem contribuição com chave, o payload do aoMontar não ganha campo novo');
+});
+
+test('contribuição COM `chaves` e sem `config.chaves` monta o mesmo prompt que a mesma contribuição sem o campo `chaves`', async () => {
+  const campos = (info) => ({
+    mensagens: info.mensagens, secoes: info.secoes, system: info.system,
+    mensagemDoTurno: info.mensagemDoTurno, entraram: info.entraram, sairam: info.sairam,
+  });
+  const rodar = async (grafico) => {
+    const infos = [];
+    const orq = fabrica({ contribuicoes: [BASE, grafico], aoMontar: (i) => infos.push(i) });
+    const t1 = await orq.executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+    const t2 = await orq.executarTurno({ texto: 'x', estado: t1.estado });
+    return { t1, t2, infos };
+  };
+  const { volatil: _v, chaves: _c, ...semChaves } = GRAFICO;
+  // O gêmeo é `volatil: true`: contribuição por chave é volátil por definição (mesma posição no system).
+  const comChaves = await rodar(GRAFICO);
+  const gemeo = await rodar({ ...semChaves, volatil: true });
+  assert.equal(comChaves.t1.payload.system, gemeo.t1.payload.system);
+  assert.equal(comChaves.t2.payload.system, gemeo.t2.payload.system);
+  assert.deepEqual(campos(comChaves.infos[0]), campos(gemeo.infos[0]));
+  assert.deepEqual(campos(comChaves.infos[1]), campos(gemeo.infos[1]));
 });
 
 // --- semanticaSemChave / limiaresDeConversa --------------------------------------------------------
@@ -152,7 +174,7 @@ const GRAFICO_SEMANTICO = piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', {
 });
 const refsDeConversa = (discover) => discover.explain.filter((e) => e.ring === 'conversation').map((e) => e.ref);
 
-test('semanticaSemChave: a contribuição que não bateu vira item de conversa `chave/<kind>/<chave>` com o texto dela', async () => {
+test('semanticaSemChave: a contribuição que não bateu vira item de conversa `chave/<kind>/<origem>.<id>` com o texto dela', async () => {
   const itens = [];
   const orq = fabrica({
     contribuicoes: [BASE, GRAFICO_SEMANTICO],
@@ -162,8 +184,8 @@ test('semanticaSemChave: a contribuição que não bateu vira item de conversa `
     aoIncluirConversa: (ctx, refs) => itens.push(refs),
   });
   const { discover, payload } = await orq.executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: [] }, estado: ESTADO_INICIAL });
-  assert.ok(refsDeConversa(discover).includes('chave/regra/grafico'), 'o item semântico não chegou ao kairos');
-  assert.deepEqual(itens[0], ['chave/regra/grafico']);
+  assert.ok(refsDeConversa(discover).includes('chave/regra/informacoes.grafico'), 'o item semântico não chegou ao kairos');
+  assert.deepEqual(itens[0], ['chave/regra/informacoes.grafico']);
   assert.ok(payload.system.includes('TEXTO_GRAFICO') || payload.mensagemDoTurno.includes('TEXTO_GRAFICO'),
     'o texto da contribuição tem de chegar ao prompt pelo canal semântico');
 });
@@ -175,7 +197,7 @@ test('semanticaSemChave: com a chave no turno, o item semântico NÃO é emitido
     semanticaSemChave: true,
   });
   const { discover, payload } = await orq.executarTurno({ texto: TEXTO_SEM_RELACAO, ctx: { chaves: ['grafico'] }, estado: ESTADO_INICIAL });
-  assert.ok(!refsDeConversa(discover).includes('chave/regra/grafico'));
+  assert.ok(!refsDeConversa(discover).includes('chave/regra/informacoes.grafico'));
   assert.ok(payload.system.includes('TEXTO_GRAFICO'));
 });
 
@@ -201,5 +223,112 @@ test('limiaresDeConversa chega ao kairos como os cortes de conversa do turno', a
     return refs;
   };
   assert.deepEqual(await incluidas({}), [], 'com os cortes padrão, o texto sem relação não puxa o item');
-  assert.deepEqual(await incluidas({ limiaresDeConversa: { include: 0, candidate: 0 } }), ['chave/regra/grafico']);
+  assert.deepEqual(await incluidas({ limiaresDeConversa: { include: 0, candidate: 0 } }), ['chave/regra/informacoes.grafico']);
+});
+
+// --- prioridade (colisão recusada na montagem) --------------------------------------------------------
+
+const montar = (contribuicoes, extra = {}) =>
+  fabrica({ contribuicoes, chaves: () => [], ...extra }).executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+
+test('prioridade: duas de piso no mesmo nível com a mesma `priority` recusam a montagem no PRIMEIRO turno, sem a chave entrar', async () => {
+  const b20 = piso('informacoes/regra/base', 'TEXTO_BASE', { priority: 20 });
+  const g20 = piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', { priority: 20, chaves: ['grafico'] });
+  await assert.rejects(() => montar([b20, g20]), (e) => /mesma prioridade \(20\)/.test(e.message)
+    && e.message.includes('informacoes/regra/base') && e.message.includes('informacoes/regra/grafico'));
+});
+
+test('prioridade: contribuição com `chaves` sem `priority`, ou na posição do bloco de capacidades (50), recusa a montagem', async () => {
+  const semPrioridade = piso('informacoes/regra/grafico', 'G', { chaves: ['grafico'], priority: undefined });
+  await assert.rejects(() => montar([BASE, semPrioridade]), /precisa declarar `priority`/);
+  const em50 = piso('informacoes/regra/grafico', 'G', { chaves: ['grafico'], priority: 50 });
+  await assert.rejects(() => montar([BASE, em50]), /é a do bloco de capacidades/);
+  // A posição do bloco de capacidades é configurável: com ela em 70, 50 passa e 70 não.
+  await montar([BASE, em50], { prioridadeDasCapacidades: 70 });
+  const em70 = piso('informacoes/regra/grafico', 'G', { chaves: ['grafico'], priority: 70 });
+  await assert.rejects(() => montar([BASE, em70], { prioridadeDasCapacidades: 70 }), /é a do bloco de capacidades/);
+});
+
+test('prioridade: decimal distinta (51.01, 51.02) é aceita; destinos `turn:` não disputam posição', async () => {
+  const a = piso('informacoes/regra/base', 'TEXTO_BASE', { priority: 51.01 });
+  const b = piso('informacoes/regra/grafico', 'TEXTO_GRAFICO', { priority: 51.02, chaves: ['grafico'] });
+  const { payload } = await montar([a, b], { chaves: () => ['grafico'] });
+  assert.ok(payload.system.includes('TEXTO_BASE') && payload.system.includes('TEXTO_GRAFICO'));
+  const noTurno = piso('informacoes/regra/turno', 'TEXTO_TURNO', { destination: 'turn:context', priority: 10 });
+  await montar([BASE, noTurno, GRAFICO]);
+});
+
+test('prioridade: host sem nenhuma contribuição com `chaves` não ganha validação nova (o empate segue sendo do acumular)', async () => {
+  const a = piso('informacoes/regra/a', 'A', { priority: 20 });
+  const b = piso('informacoes/regra/b', 'B', { priority: 20 });
+  await assert.rejects(() => fabrica({ contribuicoes: [a, b] }).executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL }),
+    /duas contribuições "estaveis" com a mesma prioridade/);
+});
+
+// --- ref semântico: origem no último segmento, unicidade e kind ----------------------------------------
+
+test('ref semântico leva a origem (`chave/<kind>/<origem>.<id>`): `o1/regra/x` e `o2/regra/x` não colidem', async () => {
+  const x1 = piso('o1/regra/x', 'X1', { chaves: ['a'], priority: 20, semanticText: 'x um' });
+  const x2 = piso('o2/regra/x', 'X2', { chaves: ['a'], priority: 30, semanticText: 'x dois' });
+  const { discover } = await fabrica({
+    contribuicoes: [BASE, x1, x2], chaves: () => [], semanticaSemChave: true, limiaresDeConversa: { include: 0, candidate: 0 },
+  }).executarTurno({ texto: TEXTO_SEM_RELACAO, estado: ESTADO_INICIAL });
+  const refs = refsDeConversa(discover);
+  assert.ok(refs.includes('chave/regra/o1.x') && refs.includes('chave/regra/o2.x'), `refs: ${refs}`);
+});
+
+test('ref semântico: derivado repetido ou `kind` vazio/ausente recusa a montagem (só com `semanticaSemChave`)', async () => {
+  const dup1 = piso('o1/regra/x', 'X1', { chaves: ['a'], priority: 20, semanticText: 'x' });
+  const dup2 = piso('o1/outro/regra/x', 'X2', { chaves: ['a'], priority: 30, semanticText: 'x' });
+  const opcoes = { chaves: () => [], semanticaSemChave: true };
+  await assert.rejects(() => montar([BASE, dup1, dup2], opcoes), /colide com "o1\/regra\/x"/);
+  const semKind = piso('o1/regra/y', 'Y', { chaves: ['a'], priority: 20, semanticText: 'y', kind: '' });
+  await assert.rejects(() => montar([BASE, semKind], opcoes), /`kind` precisa ser string não vazia/);
+  const kindNaoString = piso('o1/regra/y', 'Y', { chaves: ['a'], priority: 20, semanticText: 'y', kind: undefined });
+  await assert.rejects(() => montar([BASE, kindNaoString], opcoes), /`kind` precisa ser string não vazia/);
+  // Sem `semanticaSemChave` nada disso é conferido.
+  await montar([BASE, dup1, dup2], { chaves: () => [] });
+  // Colisão com um ref de contribuição semântica (`floor: false`) também.
+  const sem = { ref: 'chave/regra/o1.x', kind: 'regra', floor: false, read: async () => 'S' };
+  await assert.rejects(() => montar([BASE, dup1, sem], opcoes), /colide com "chave\/regra\/o1.x"/);
+});
+
+// --- `config.chaves` instável ---------------------------------------------------------------------------
+
+test('`config.chaves` que lança: o turno completa só com a base e o erro sai em `renderErrors`', async () => {
+  const orq = fabrica({ contribuicoes: [BASE, GRAFICO], chaves: () => { throw new Error('boom'); } });
+  const { payload, renderErrors, resultado } = await orq.executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.equal(resultado.type, 'completed');
+  assert.ok(payload.system.includes('TEXTO_BASE'));
+  assert.ok(!payload.system.includes('TEXTO_GRAFICO'));
+  assert.ok(renderErrors.some((e) => /config\.chaves falhou/.test(e.error) && /boom/.test(e.error)), JSON.stringify(renderErrors));
+});
+
+test('`config.chaves` é chamada UMA vez por turno (memoizada): `ficaram` e o `read` do piso nunca discordam', async () => {
+  let chamadas = 0;
+  const infos = [];
+  // Instável de propósito: a 1ª resposta traz a chave, as seguintes não.
+  const orq = fabrica({
+    contribuicoes: [BASE, GRAFICO],
+    chaves: () => { chamadas += 1; return chamadas === 1 ? ['grafico'] : []; },
+    aoMontar: (i) => infos.push(i),
+  });
+  const { payload } = await orq.executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.equal(chamadas, 1, 'config.chaves tem de ser chamada uma vez por turno');
+  assert.deepEqual(infos[0].chaves.entraram, ['informacoes/regra/grafico']);
+  assert.ok(payload.system.includes('TEXTO_GRAFICO'), 'o read decidiu com as mesmas chaves que o aoMontar publicou');
+});
+
+test('`config.chaves` devolvendo chave fora de `catalogoDeChaves`: ignorada e registrada em `renderErrors`', async () => {
+  const orq = fabrica({ contribuicoes: [BASE, GRAFICO], catalogoDeChaves: ['grafico'], chaves: () => ['xpto'] });
+  const { payload, renderErrors } = await orq.executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.ok(!payload.system.includes('TEXTO_GRAFICO'));
+  assert.ok(renderErrors.some((e) => /fora de catalogoDeChaves/.test(e.error) && /xpto/.test(e.error)), JSON.stringify(renderErrors));
+});
+
+test('`volatil` é dispensado quando há `chaves` (volátil por definição); sem `chaves`, segue obrigatório', async () => {
+  assert.ok(!('volatil' in GRAFICO));
+  await montar([BASE, GRAFICO]);
+  const { volatil: _v, ...semVolatil } = piso('informacoes/regra/outra', 'O', { priority: 30 });
+  await assert.rejects(() => montar([BASE, semVolatil]), /contribuição de piso sem `volatil`/);
 });

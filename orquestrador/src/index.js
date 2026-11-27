@@ -41,7 +41,10 @@ import { criarCacheSemantica } from './cache-semantica.js';
 import { cacheDoCatalogoEmDisco, limparCacheDoCatalogoEmDisco } from './cache-catalogo-disco.js';
 import { formatarMensagensIntraTurno } from './mensagem-intra-turno.js';
 import { AVISO_PERTO_DO_PRAZO } from './protocolo/perto-do-teto.js';
-import { contribuicaoBateComChaves, validarChavesDasContribuicoes } from './chaves.js';
+import {
+  contribuicaoBateComChaves, validarChavesDasContribuicoes, validarPrioridadesDePiso,
+  validarRefsSemanticosDasChaves, refSemanticoDaChave,
+} from './chaves.js';
 
 // Quanto antes do prazo de tempo da mensagem o aviso entra: um passo longo (render) leva minutos.
 const AVISO_DE_PRAZO_ANTES_MS = 4 * 60_000;
@@ -84,7 +87,7 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   que nunca chegou ao prompt. `montarCatalogo` recusa a montagem, nomeando
  *   o `ref`, antes de o turno rodar.
  *
- *   **`volatil` é obrigatório quando `floor: true`**, e é campo DA FÁBRICA
+ *   **`volatil` é obrigatório quando `floor: true`** (exceto com `chaves`, que é volátil por definição), e é campo DA FÁBRICA
  *   (removido antes de registrar no kairos). `true` = o `read(ctx)` produz
  *   valor diferente a cada turno e precisa ser RECALCULADO quando o discover é
  *   pulado por texto trivial; `false` = uma vez no prompt, fica lá.
@@ -106,9 +109,12 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *
  *   **`chaves?: string[]` (só em `floor: true`)** — contribuição por CHAVE: entra só quando o turno
  *   (`config.chaves(ctx)`) traz uma delas; sem `chaves`, é base e entra sempre. É campo DA FÁBRICA
- *   (removido antes do kairos) e implica `volatil`: a contribuição muda por turno, então a fábrica a
- *   relê a cada turno (inclusive no trivial) e a retira do prompt acumulado quando a chave sai.
- *   `chaves: []` e `chaves` em `floor: false` são recusa de montagem.
+ *   (removido antes do kairos) e é volátil por definição — muda por turno —, então DISPENSA `volatil`
+ *   (se declarado, é ignorado): a fábrica a relê a cada turno (inclusive no trivial) e a retira do prompt
+ *   acumulado quando a chave sai. Recusa de montagem: `chaves: []`, `chaves` em `floor: false`, chave fora
+ *   de `catalogoDeChaves`, `priority` indefinida ou igual à do bloco de capacidades (o default cai nela) e
+ *   qualquer empate de `priority` entre contribuições de piso do mesmo nível (decimal vale: 51.01, 51.02).
+ *   Com `semanticaSemChave`, o `kind` precisa ser string não vazia e o ref derivado único.
  * @property {(ctx: any) => string[]} [chaves] Chaves do TRABALHO deste turno, lidas a cada `executarTurno`
  *   (o orquestrador é um por processo; o que muda por pedido chega pelo `ctx`). Uma contribuição de
  *   piso que declara `chaves: [...]` só entra no prompt quando alguma delas está nas chaves do turno;
@@ -120,7 +126,7 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   fora do catálogo é recusa de montagem. Sem ele os nomes não são conferidos.
  * @property {boolean} [semanticaSemChave] Opt-in. Contribuição de piso com `chaves` que NÃO bateu neste
  *   turno e declara `semanticText` vira item do canal de conversa do kairos (`ref`
- *   `chave/<kind>/<último segmento do ref>`): ainda pode entrar se a conversa pedir o assunto, pelo
+ *   `chave/<kind>/<origem>.<id>`, origem = 1º segmento do ref da contribuição, id = o último): ainda pode entrar se a conversa pedir o assunto, pelo
  *   ranking semântico. Padrão desligado.
  * @property {{ include?: number, candidate?: number }} [limiaresDeConversa] Cortes do canal de conversa
  *   deste turno (`threshold`/`candidateThreshold` do `conversation` do kairos). Ausente = defaults do kairos.
@@ -722,15 +728,29 @@ export function opcoesDeSemantica(semantica) {
 /**
  * Chaves do trabalho deste turno. Com `config.chaves`, é o que o host devolve; sem ela o turno tem TODAS
  * as chaves (catálogo declarado ou, sem catálogo, as declaradas nas contribuições) — host que não passa
- * `chaves` não muda de comportamento ao ganhar contribuição com chave.
+ * `chaves` não muda de comportamento ao ganhar contribuição com chave. `config.chaves` que lança vale
+ * `[]` (só a base entra) e o erro volta em `erros`; chave fora de `catalogoDeChaves` é ignorada pelas
+ * contribuições (já validadas contra o catálogo) e também volta em `erros`.
  * @param {{ chaves?: (ctx: any) => string[], catalogoDeChaves?: string[] }} config
  * @param {any} ctx
  * @param {readonly string[]} declaradas chaves declaradas nas contribuições
- * @returns {string[]}
+ * @returns {{ chaves: string[], erros: Array<{ ref: string, error: string }> }}
  */
 function chavesDoTurno(config, ctx, declaradas) {
-  if (config.chaves) return [...(config.chaves(ctx) ?? [])];
-  return [...(config.catalogoDeChaves ?? declaradas)];
+  if (!config.chaves) return { chaves: [...(config.catalogoDeChaves ?? declaradas)], erros: [] };
+  let chaves;
+  try {
+    chaves = [...(config.chaves(ctx) ?? [])];
+  } catch (erro) {
+    return { chaves: [], erros: [{ ref: 'chaves/config', error: `config.chaves falhou, só a base entra: ${String(erro?.message ?? erro)}` }] };
+  }
+  const foraDoCatalogo = config.catalogoDeChaves ? chaves.filter((c) => !config.catalogoDeChaves.includes(c)) : [];
+  return {
+    chaves,
+    erros: foraDoCatalogo.length
+      ? [{ ref: 'chaves/config', error: `config.chaves devolveu chave fora de catalogoDeChaves (ignorada): ${foraDoCatalogo.join(', ')}` }]
+      : [],
+  };
 }
 
 /**
@@ -1433,6 +1453,20 @@ export function criarOrquestrador(config) {
   // montagem, e não disparar `createManager` + `reindex()` duas vezes (`reindex`
   // é índice vetorial com o embedder do host (o Kairos 0.836 não tem modelo próprio) — caro, e um bridge órfão sobraria do
   // segundo). Mesmo padrão do Ariadne (`orquestrador/motor.ts#montarUmaVez`).
+  // Chaves do trabalho por `ctx` de turno, calculadas UMA vez: `executarTurno` (`remover`, `aoMontar`) e
+  // cada `read` do piso por chave (discover, reconstrução, segundo `prepareTurn`) precisam concordar, e
+  // `config.chaves` pode ser cara ou instável. A cópia de `ctx` da promoção herda a entrada do original.
+  const chavesPorCtx = new WeakMap();
+  /** @type {string[]} */
+  let chavesDeclaradasDoCatalogo = [];
+  function chavesDoTurnoMemo(ctx) {
+    const guardado = ctx !== null && typeof ctx === 'object' ? chavesPorCtx.get(ctx) : undefined;
+    if (guardado) return guardado;
+    const calculado = chavesDoTurno(config, ctx, chavesDeclaradasDoCatalogo);
+    if (ctx !== null && typeof ctx === 'object') chavesPorCtx.set(ctx, calculado);
+    return calculado;
+  }
+
   let catalogo = null;
 
   function montarCatalogo() {
@@ -1678,8 +1712,9 @@ export function criarOrquestrador(config) {
         // `volatil` só é cobrado de PISO (ver JSDoc de `contribuicoes`) —
         // daqui em diante toda contribuição de `pisoContribs` já tem
         // `floor === true` (a guarda acima recusou o resto).
+        // Contribuição com `chaves` é volátil por definição (muda por turno): dispensa `volatil`.
         const semVolatilidade = pisoContribs
-          .filter((c) => typeof c.volatil !== 'boolean')
+          .filter((c) => c.chaves === undefined && typeof c.volatil !== 'boolean')
           .map((c) => c.ref);
         if (semVolatilidade.length) {
           throw new Error(
@@ -1700,8 +1735,30 @@ export function criarOrquestrador(config) {
             + '`catalogoDeChaves`, só aceita nomes do catálogo.',
           );
         }
+        // Prioridade: a colisão só estouraria no `acumular`, no meio da sessão, quando a chave entrasse.
+        const errosDePrioridade = validarPrioridadesDePiso(todasContribuicoes, config.prioridadeDasCapacidades);
+        if (errosDePrioridade.length) {
+          throw new Error(
+            `contribuição de piso com prioridade inválida: ${errosDePrioridade.join('; ')}. `
+            + 'A prioridade decide a POSIÇÃO no prompt e é única dentro do nível; uma contribuição por '
+            + 'chave só entra no meio da conversa, e um empate só apareceria ali. Declare `priority` '
+            + 'distinta (pode ser decimal) em cada contribuição de piso do mesmo nível, diferente da do '
+            + 'bloco de capacidades.',
+          );
+        }
+        if (config.semanticaSemChave) {
+          const errosDeRefSemantico = validarRefsSemanticosDasChaves(todasContribuicoes, semanticContribs.map((c) => c.ref));
+          if (errosDeRefSemantico.length) {
+            throw new Error(
+              `\`semanticaSemChave\` com ref derivado inválido: ${errosDeRefSemantico.join('; ')}. `
+              + 'O item de conversa de uma contribuição que não bateu a chave tem ref '
+              + '`chave/<kind>/<origem>.<id>`; ele precisa ser único e de três segmentos.',
+            );
+          }
+        }
         comChave = pisoContribs.filter((c) => c.chaves !== undefined);
         chavesDeclaradas = [...new Set(comChave.flatMap((c) => c.chaves))];
+        chavesDeclaradasDoCatalogo = chavesDeclaradas;
 
         if (pisoContribs.length) {
           manager.registry.registerProvider(
@@ -1740,7 +1797,7 @@ export function criarOrquestrador(config) {
                 : {
                   ...c,
                   read: async (ctxDoTurno) => (
-                    contribuicaoBateComChaves({ chaves }, chavesDoTurno(config, ctxDoTurno, chavesDeclaradas))
+                    contribuicaoBateComChaves({ chaves }, chavesDoTurnoMemo(ctxDoTurno).chaves)
                       ? c.read(ctxDoTurno)
                       : ''
                   ),
@@ -1790,7 +1847,6 @@ export function criarOrquestrador(config) {
         // Contribuições de piso por chave: `executarTurno` decide, a cada turno, quais entram
         // (`remover` do acumulador, `aoMontar.chaves`, item semântico opt-in).
         comChave,
-        chavesDoTurnoDe: (ctxDoTurno) => chavesDoTurno(config, ctxDoTurno, chavesDeclaradas),
         // Repassado a `executarTurno` (Task 11, spec F1): a fábrica embeda a pergunta UMA
         // vez lá fora do `createGenosBridge`, para reusar o mesmo vetor nos possíveis dois
         // `prepareTurn` do turno (I3a — provider dono de skill sugerida sem estar carregado —
@@ -2011,6 +2067,8 @@ export function criarOrquestrador(config) {
     // turno segue idêntico (replay), item sem cache não é perguntado de novo — mantém o
     // `proposedTier` do motor. Ver o comentário espelhado lá.
     const ctxDePromocao = Object.assign(Object.create(Object.getPrototypeOf(ctx ?? {})), ctx, { __promocao: true });
+    // O piso por chave do segundo discover tem de decidir com as MESMAS chaves do turno.
+    if (ctx && chavesPorCtx.has(ctx)) chavesPorCtx.set(ctxDePromocao, chavesPorCtx.get(ctx));
     const prepared = await bridge.prepareTurn({
       text: texto,
       ctx: ctxDePromocao,
@@ -2542,7 +2600,7 @@ export function criarOrquestrador(config) {
     // foi quem pagou o custo (promise ainda não existia) ou só reusou o resultado de outra.
     const catalogoJaMontado = catalogo !== null;
     const {
-      manager, can, refsVolateisDeclaradas, contribuicoesSemanticas, comChave, chavesDoTurnoDe,
+      manager, can, refsVolateisDeclaradas, contribuicoesSemanticas, comChave,
       embedder, infoLimiares, msCalibracao,
     } = await montarCatalogo();
     tempos.catalogo = Date.now() - t0Turno;
@@ -2557,7 +2615,9 @@ export function criarOrquestrador(config) {
     // (mesmo critério, `contribuicaoBateComChaves`); aqui é o que o acumulador precisa saber —
     // quais retirar do prompt acumulado — e o que o `aoMontar` publica.
     const chavesAtivas = Boolean(config.chaves) || comChave.length > 0;
-    const chavesDesteTurno = chavesAtivas ? chavesDoTurnoDe(ctx) : [];
+    const { chaves: chavesDesteTurno, erros: errosDeChaves } = chavesAtivas
+      ? chavesDoTurnoMemo(ctx)
+      : { chaves: [], erros: [] };
     const refsComChaveQueEntraram = comChave
       .filter((c) => contribuicaoBateComChaves(c, chavesDesteTurno)).map((c) => c.ref);
     const refsComChaveQueFicaram = comChave
@@ -2579,7 +2639,8 @@ export function criarOrquestrador(config) {
     // item semântico: cai em `renderErrors` — mesma garantia que o resto
     // deste arquivo já dá ao piso — e o turno segue sem aquele item.
     const itensDeConversa = [];
-    const errosDeLeituraSemantica = [];
+    // Os erros de `config.chaves` (lançou, chave fora do catálogo) saem em `renderErrors` junto dos de leitura.
+    const errosDeLeituraSemantica = [...errosDeChaves];
     for (const c of contribuicoesSemanticas) {
       try {
         const content = await c.read(ctx);
@@ -2609,7 +2670,7 @@ export function criarOrquestrador(config) {
         try {
           const content = await c.read(ctx);
           itensDeConversa.push({
-            ref: `chave/${c.kind ?? c.ref.split('/')[1]}/${c.ref.split('/').pop()}`,
+            ref: refSemanticoDaChave(c),
             content,
             semanticText: c.semanticText,
             destination: 'turn:context',
