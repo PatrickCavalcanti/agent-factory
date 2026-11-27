@@ -3,6 +3,34 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.2.5] — 2026-11-27
+
+Contribuição por chave. **Host que não declara chaves não muda.**
+
+### Adicionado
+
+- `contribuicoes[].chaves` (só em `floor: true`): a contribuição entra só quando o turno traz uma das chaves; sem o
+  campo, é base e entra sempre. É volátil por definição (dispensa `volatil`): relida a cada turno, inclusive no
+  trivial, e retirada do prompt acumulado quando a chave sai.
+- `config.chaves(ctx)`: as chaves do trabalho do turno. Sem a função, o turno tem todas as chaves. Se lançar, o
+  turno segue só com a base e o erro vai para `renderErrors`. Memoizado pelo objeto `ctx`.
+- `config.catalogoDeChaves`: chave de contribuição fora dele é recusa de montagem; chave do turno fora dele é
+  ignorada e registrada em `renderErrors`.
+- `config.semanticaSemChave` (opt-in): contribuição com chave que não bateu e tem `semanticText` vira item de
+  conversa `chave/<kind>/<origem>.<id>`.
+- `config.limiaresDeConversa` (`{ include, candidate }`): cortes do canal de conversa do kairos.
+- `aoMontar` publica `chaves: { doTurno, entraram, ficaram }` quando o host usa chaves.
+
+### Recusas novas de montagem (só para quem declara chaves)
+
+- contribuição com `chaves` sem `priority` ou com a prioridade do bloco de capacidades; empate de `priority` entre
+  pisos do mesmo nível (decimal vale: 51.01, 51.02); com `semanticaSemChave`, `kind` vazio ou ref derivado repetido.
+
+### Atenção
+
+- Pôr `chaves` numa contribuição que era `volatil: false` muda a posição dela no system (passa para a parte
+  volátil), e com isso o prefixo de cache.
+
 ## [0.2.4] — 2026-11-25
 
 Leva à linha 0.2.x as mudanças da 0.1.1 (ramo `release/0.1.x`).
