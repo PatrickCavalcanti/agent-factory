@@ -121,7 +121,9 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   sem `chaves` na contribuição ela é BASE e entra sempre. Determinístico de propósito — o que o host
  *   sabe pelo trabalho não depende de ranking. Sem esta função o turno tem TODAS as chaves (as de
  *   `catalogoDeChaves` ou, sem catálogo, todas as declaradas nas contribuições): ligar `chaves` em
- *   contribuições nunca muda um host que não passa `chaves`. Se a função lançar, o turno falha.
+ *   contribuições nunca muda um host que não passa `chaves`. Se a função lançar, o turno segue só com a
+ *   base (chaves `[]`) e o erro vai para `renderErrors`. O resultado é memoizado pelo OBJETO `ctx`: passe
+ *   um `ctx` novo a cada `executarTurno` (ou não mude as chaves dele entre turnos).
  * @property {string[]} [catalogoDeChaves] Nomes de chave válidos. Com ele, `chaves` de contribuição
  *   fora do catálogo é recusa de montagem. Sem ele os nomes não são conferidos.
  * @property {boolean} [semanticaSemChave] Opt-in. Contribuição de piso com `chaves` que NÃO bateu neste
