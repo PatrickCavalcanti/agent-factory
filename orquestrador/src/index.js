@@ -41,6 +41,7 @@ import { criarCacheSemantica } from './cache-semantica.js';
 import { cacheDoCatalogoEmDisco, limparCacheDoCatalogoEmDisco } from './cache-catalogo-disco.js';
 import { formatarMensagensIntraTurno } from './mensagem-intra-turno.js';
 import { AVISO_PERTO_DO_PRAZO } from './protocolo/perto-do-teto.js';
+import { contribuicaoBateComChaves, validarChavesDasContribuicoes } from './chaves.js';
 
 // Quanto antes do prazo de tempo da mensagem o aviso entra: um passo longo (render) leva minutos.
 const AVISO_DE_PRAZO_ANTES_MS = 4 * 60_000;
@@ -50,7 +51,7 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  * @typedef {object} ConfigDoOrquestrador
  * @property {(ctx: any) => Array<{nome: string, conteudo: string}>} base seções fixas do system
  * @property {import('./capacidades.js').CapacidadeDeclarada[]} capacidades
- * @property {Array<import('@okds/kairos/core/types').Contribution & { volatil?: boolean }>} [contribuicoes]
+ * @property {Array<import('@okds/kairos/core/types').Contribution & { volatil?: boolean, chaves?: string[] }>} [contribuicoes]
  *   Contribuição que o agente precisa SABER, não CHAMAR — a metade do modelo
  *   de contribuição do kairos que a fábrica não tinha caminho nenhum para
  *   receber. `floor` decide o DESTINO, e os dois são caminhos de primeira
@@ -102,6 +103,27 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   Se o host declarar `volatil` mesmo assim (ex.: reaproveitando um objeto
  *   que também serve de piso em outro perfil), a fábrica aceita e IGNORA —
  *   não vale quebrar o host por um campo a mais que não muda nada aqui.
+ *
+ *   **`chaves?: string[]` (só em `floor: true`)** — contribuição por CHAVE: entra só quando o turno
+ *   (`config.chaves(ctx)`) traz uma delas; sem `chaves`, é base e entra sempre. É campo DA FÁBRICA
+ *   (removido antes do kairos) e implica `volatil`: a contribuição muda por turno, então a fábrica a
+ *   relê a cada turno (inclusive no trivial) e a retira do prompt acumulado quando a chave sai.
+ *   `chaves: []` e `chaves` em `floor: false` são recusa de montagem.
+ * @property {(ctx: any) => string[]} [chaves] Chaves do TRABALHO deste turno, lidas a cada `executarTurno`
+ *   (o orquestrador é um por processo; o que muda por pedido chega pelo `ctx`). Uma contribuição de
+ *   piso que declara `chaves: [...]` só entra no prompt quando alguma delas está nas chaves do turno;
+ *   sem `chaves` na contribuição ela é BASE e entra sempre. Determinístico de propósito — o que o host
+ *   sabe pelo trabalho não depende de ranking. Sem esta função o turno tem TODAS as chaves (as de
+ *   `catalogoDeChaves` ou, sem catálogo, todas as declaradas nas contribuições): ligar `chaves` em
+ *   contribuições nunca muda um host que não passa `chaves`. Se a função lançar, o turno falha.
+ * @property {string[]} [catalogoDeChaves] Nomes de chave válidos. Com ele, `chaves` de contribuição
+ *   fora do catálogo é recusa de montagem. Sem ele os nomes não são conferidos.
+ * @property {boolean} [semanticaSemChave] Opt-in. Contribuição de piso com `chaves` que NÃO bateu neste
+ *   turno e declara `semanticText` vira item do canal de conversa do kairos (`ref`
+ *   `chave/<kind>/<último segmento do ref>`): ainda pode entrar se a conversa pedir o assunto, pelo
+ *   ranking semântico. Padrão desligado.
+ * @property {{ include?: number, candidate?: number }} [limiaresDeConversa] Cortes do canal de conversa
+ *   deste turno (nomes do kairos: ver `executarTurno`). Ausente = defaults do kairos.
  * @property {(ctx: any) => string[]} [refsVolateis] Refs de CONTRIBUIÇÃO (não de tool) cujo
  *   `read(ctx)` produz um valor diferente a cada turno (ex.: lê a tela aberta, um contador). São
  *   as que precisam ser RECALCULADAS — não só reexibidas — quando o discover é pulado por texto
@@ -695,6 +717,20 @@ export function opcoesDeSemantica(semantica) {
     semantica: { aneis: semantica.aneis },
     ...(semantica.arquivoCache ? { cacheVetores: criarCacheSemantica(semantica.arquivoCache) } : {}),
   };
+}
+
+/**
+ * Chaves do trabalho deste turno. Com `config.chaves`, é o que o host devolve; sem ela o turno tem TODAS
+ * as chaves (catálogo declarado ou, sem catálogo, as declaradas nas contribuições) — host que não passa
+ * `chaves` não muda de comportamento ao ganhar contribuição com chave.
+ * @param {{ chaves?: (ctx: any) => string[], catalogoDeChaves?: string[] }} config
+ * @param {any} ctx
+ * @param {readonly string[]} declaradas chaves declaradas nas contribuições
+ * @returns {string[]}
+ */
+function chavesDoTurno(config, ctx, declaradas) {
+  if (config.chaves) return [...(config.chaves(ctx) ?? [])];
+  return [...(config.catalogoDeChaves ?? declaradas)];
 }
 
 /**
@@ -1570,6 +1606,10 @@ export function criarOrquestrador(config) {
       // só cataloga piso e skills.
       const pisoDasFontes = config.capacidades.flatMap((c) => c.fonte?.piso ?? []);
       let contribuicoesSemanticas = [];
+      // Contribuições de piso com `chaves` (cruas, com `ref`/`chaves`/`semanticText`) e a união das
+      // chaves que declaram — preenchidas no bloco abaixo, lidas por `executarTurno`.
+      let comChave = [];
+      let chavesDeclaradas = [];
       if (config.contribuicoes?.length || pisoDasFontes.length) {
         // União ANTES de validar — as fontes entram no MESMO catálogo que `config.contribuicoes`,
         // então a validação abaixo (floor booleano, `volatil` obrigatório em piso, formato de
@@ -1638,6 +1678,18 @@ export function criarOrquestrador(config) {
           );
         }
 
+        // `chaves` (contribuição por chave): forma e nome conferidos aqui, antes de o turno rodar.
+        const errosDeChave = validarChavesDasContribuicoes(todasContribuicoes, config.catalogoDeChaves);
+        if (errosDeChave.length) {
+          throw new Error(
+            `contribuição com \`chaves\` inválida: ${errosDeChave.join('; ')}. `
+            + '`chaves` só vale em contribuição de piso, não pode ser vazia e, com '
+            + '`catalogoDeChaves`, só aceita nomes do catálogo.',
+          );
+        }
+        comChave = pisoContribs.filter((c) => c.chaves !== undefined);
+        chavesDeclaradas = [...new Set(comChave.flatMap((c) => c.chaves))];
+
         if (pisoContribs.length) {
           manager.registry.registerProvider(
             {
@@ -1664,7 +1716,23 @@ export function criarOrquestrador(config) {
             // comentário afirmava que o kairos recusaria com "campo não
             // previsto" — essa afirmação veio do caso de ARGUMENTO de tool
             // acima, não se aplica a contribuições, e nunca foi verdade aqui.)
-            { contributions: pisoContribs.map(({ volatil: _volatil, ...c }) => c) },
+            //
+            // `chaves` também é da fábrica: sai do objeto e vira um `read` que devolve '' quando o
+            // turno não traz nenhuma das chaves (bloco vazio some do prompt — `assemble` descarta
+            // conteúdo vazio). O `ctx` do `read` é o do turno, então a decisão é por turno mesmo com
+            // o catálogo montado uma vez por processo.
+            {
+              contributions: pisoContribs.map(({ volatil: _volatil, chaves, ...c }) => (chaves === undefined
+                ? c
+                : {
+                  ...c,
+                  read: async (ctxDoTurno) => (
+                    contribuicaoBateComChaves({ chaves }, chavesDoTurno(config, ctxDoTurno, chavesDeclaradas))
+                      ? c.read(ctxDoTurno)
+                      : ''
+                  ),
+                })),
+            },
           );
         }
 
@@ -1685,7 +1753,7 @@ export function criarOrquestrador(config) {
       // acima — recomputada aqui porque `todasContribuicoes` é local ao bloco `if` e não
       // está no escopo deste ponto.
       const refsVolateisDeclaradas = [...(config.contribuicoes ?? []), ...pisoDasFontes]
-        .filter((c) => c.floor === true && c.volatil === true)
+        .filter((c) => c.floor === true && (c.volatil === true || c.chaves !== undefined))
         .map((c) => c.ref);
       // C3P: a FACHADA de manager (a que intercepta `discover` para publicar a seleção e,
       // desde B3.3 fase 2, para entregar as `hints` da pista de contexto) NÃO é mais criada
@@ -1706,6 +1774,10 @@ export function criarOrquestrador(config) {
         can,
         refsVolateisDeclaradas,
         contribuicoesSemanticas,
+        // Contribuições de piso por chave: `executarTurno` decide, a cada turno, quais entram
+        // (`remover` do acumulador, `aoMontar.chaves`, item semântico opt-in).
+        comChave,
+        chavesDoTurnoDe: (ctxDoTurno) => chavesDoTurno(config, ctxDoTurno, chavesDeclaradas),
         // Repassado a `executarTurno` (Task 11, spec F1): a fábrica embeda a pergunta UMA
         // vez lá fora do `createGenosBridge`, para reusar o mesmo vetor nos possíveis dois
         // `prepareTurn` do turno (I3a — provider dono de skill sugerida sem estar carregado —
@@ -2457,7 +2529,8 @@ export function criarOrquestrador(config) {
     // foi quem pagou o custo (promise ainda não existia) ou só reusou o resultado de outra.
     const catalogoJaMontado = catalogo !== null;
     const {
-      manager, can, refsVolateisDeclaradas, contribuicoesSemanticas, embedder, infoLimiares, msCalibracao,
+      manager, can, refsVolateisDeclaradas, contribuicoesSemanticas, comChave, chavesDoTurnoDe,
+      embedder, infoLimiares, msCalibracao,
     } = await montarCatalogo();
     tempos.catalogo = Date.now() - t0Turno;
     // Spec do porte (§5.4): só custa de verdade no PRIMEIRO turno do processo para este conjunto
@@ -2465,6 +2538,17 @@ export function criarOrquestrador(config) {
     // nunca o `msCalibracao` velho do turno que de fato calculou.
     tempos.calibracao = catalogoJaMontado ? 0 : msCalibracao;
     const ctx = entrada.ctx || {};
+    // Contribuição por chave: as chaves do trabalho DESTE turno (só calculadas quando alguma
+    // contribuição declara `chaves` ou o host passa `config.chaves`; senão nada muda) e quais
+    // contribuições com chave entram. A decisão de verdade mora no `read` registrado no catálogo
+    // (mesmo critério, `contribuicaoBateComChaves`); aqui é o que o acumulador precisa saber —
+    // quais retirar do prompt acumulado — e o que o `aoMontar` publica.
+    const chavesAtivas = Boolean(config.chaves) || comChave.length > 0;
+    const chavesDesteTurno = chavesAtivas ? chavesDoTurnoDe(ctx) : [];
+    const refsComChaveQueEntraram = comChave
+      .filter((c) => contribuicaoBateComChaves(c, chavesDesteTurno)).map((c) => c.ref);
+    const refsComChaveQueFicaram = comChave
+      .filter((c) => !contribuicaoBateComChaves(c, chavesDesteTurno)).map((c) => c.ref);
     // `kairos` precisa vir no formato de `initialSessionState()` (@okds/kairos/session)
     // — não um literal escrito à mão aqui: sem a chave, `discover()` desreferencia
     // `state.recentUse` de um `undefined` e crasha (ver report do review de Fase 3).
@@ -3807,6 +3891,9 @@ export function criarOrquestrador(config) {
       conscientes: prepared.discoverResult.tools.conscious,
       providersCarregados: prepared.discoverResult.providers.load,
       prioridadeDeclarada: prioridadePorCapacidade,
+      // A chave saiu do turno: o texto que já estava acumulado sai junto (o acumulador nunca remove
+      // sozinho um bloco que parou de vir). Só entra quando há o que remover.
+      ...(refsComChaveQueFicaram.length ? { remover: refsComChaveQueFicaram } : {}),
     });
     tempos.prepareTurnAcumulacao = Date.now() - t0PrepareTurnAcumulacao;
     // Mudança 2: início da fase `montagemDoPrompt` — `secaoProtocolo`, `entregaDoLoop` e
@@ -3955,6 +4042,11 @@ export function criarOrquestrador(config) {
         despejo: diagDespejo,
         entraram: acumulacao.entraram,
         sairam: acumulacao.sairam,
+        // Contribuição por chave: as chaves do turno e o destino de cada contribuição com chave.
+        // Só aparece quando o host usa chaves (contribuição com `chaves` ou `config.chaves`).
+        ...(chavesAtivas
+          ? { chaves: { doTurno: chavesDesteTurno, entraram: refsComChaveQueEntraram, ficaram: refsComChaveQueFicaram } }
+          : {}),
         discover: prepared.discoverResult,
         // `embeds` (Task 11, spec F1; `'trivial'` desde o I1 da revisão final / kairos 0.832):
         // quantos embeds de CONSULTA a fábrica fez ela mesma neste turno (0 quando o host mandou
