@@ -29,6 +29,7 @@ import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } 
 import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
 import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
 import { conferirTetoDoSystem } from './teto-do-system.js';
+import { normalizarCorte, embrulharRefinadorDeTool, carregadasNoInicioDoTurno } from './corte-de-funcao.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
 import { montarContextoDeMemorias } from './memoria-do-loop.js';
@@ -183,6 +184,27 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   prompt, a fábrica mede `payload.system`; acima do teto acrescenta `{ ref: 'teto-do-system', error }` a
  *   `renderErrors` e chama `aoEvento({ tipo: 'fabrica:teto-do-system', turno, tamanho, teto })`. É AVISO: o turno
  *   completa. Ausente, nada é medido. Ver ARCHITECTURE.md §7.
+ * @property {{ carregada?: boolean | { ativo?: boolean, cabeca?: number, z?: number, minFuncoes?: number, maxPromovidas?: number, excluir?: string[] }, semanticasDoPiso?: Record<string, string[] | { funcoes: string[], campo?: string, corte?: number, corteKairos?: number }>, ativo?: boolean }} [corteDeFuncao]
+ *   CORTE DE FUNÇÃO no anel `tool` (0.3.0). No anel `tool` o Kairos propõe `full` (manual completo no prompt) para toda
+ *   função com nota ≥ 0,15 e o refinador do host nunca rebaixa essa proposta; o Igris mediu 197 manuais no system
+ *   para 10 chamados. Com este campo a fábrica EMBRULHA o refinador do anel `tool` (`config.refinadores.tool`, ou a
+ *   própria proposta do Kairos quando o host não tem um) e aplica o corte depois dele; `full` que não passa vira
+ *   `candidate` (continua no cartão, carregável sob demanda). Duas regras:
+ *   - `carregada` (`true` ou objeto; ausente = desligada): capacidade que já estava no prompt no início do turno
+ *     (`loadedProviders` do estado ao FIM do turno anterior MAIS as capacidades `piso: true`; NUNCA as promovidas
+ *     neste turno por fonte, chave ou I3a — a 1ª carga passa intacta) só ganha manual novo de função com sinal
+ *     forte: nota da cabeça local ≥ `cabeca` (padrão 0,4) ou destaque z ≥ `z` (padrão 2,5) entre as funções
+ *     dela (`minFuncoes` padrão 4). `candidate` que passa sobe, até `maxPromovidas` (padrão 3) por capacidade.
+ *     `excluir`: ids de capacidade fora da regra (padrão `[]`: a lista é do host).
+ *   - `semanticasDoPiso`: `{ [idCapacidade]: funções[] }`, para a capacidade que tem parte no piso e parte por
+ *     relevância: as funções listadas só ficam `full` com nota (`notaBase`) ≥ corte (padrão 0,45; sem nota, o
+ *     `final` do Kairos ≥ 0,6). A forma de objeto troca `campo`/`corte`/`corteKairos` — os padrões foram
+ *     calibrados pelo Igris com o embedder dele, e outro embedder exige medir de novo.
+ *   `ativo: false` (no topo ou em `carregada`) só REGISTRA as decisões, sem rebaixar nem promover (para medir).
+ *   Valor inválido recusa a montagem. Sem nota da cabeça (refinador degradado, ou nenhum refinador), vale só o z e
+ *   não promove. Com o campo, o retorno de `executarTurno` e o `aoMontar` trazem `corteDeFuncao`: as decisões do
+ *   turno (`regra`, `chamada`, `ref`, `eraFull`, `passa`, notas, `ativo`, `promovida`) e o marcador
+ *   `refinador: 'fallback:<motivo>'` quando o refinador do host falhou. Ver CAPACIDADES.md §12.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -1493,6 +1515,10 @@ export function criarOrquestrador(config) {
     return calculado;
   }
 
+  // Corte de função: decisões e base do turno corrente, por `ctx` (mesmo molde de `chavesPorCtx`: o refinador
+  // recebe o `ctx` do `prepareTurn` em `input.ctx`, e a cópia da promoção herda a entrada do original).
+  const corteDoTurnoPorCtx = new WeakMap();
+
   let catalogo = null;
 
   /**
@@ -1652,6 +1678,30 @@ export function criarOrquestrador(config) {
       // `config.limiares = {}` (objeto vazio, sem call site real hoje) o código antigo
       // passava `thresholds: {}`; `opcoesDeLimiares` não passa a chave — equivalente para
       // o kairos (nenhum threshold real muda), comportamento novo mantido.
+      // Corte de função (0.3.0): valor inválido recusa a montagem. O embrulho vale só no anel `tool`; os outros
+      // anéis seguem o refinador cru do host. Sem o turno registrado no `ctx` (não deveria acontecer: todo
+      // `prepareTurn` da fábrica leva o `ctx` do turno), o refinador do host segue como era.
+      const corteNormalizado = config.corteDeFuncao ? normalizarCorte(config.corteDeFuncao) : null;
+      const refinadorDoHost = config.refinadores?.tool ?? null;
+      const refinadoresDoManager = corteNormalizado
+        ? {
+          ...(config.refinadores ?? {}),
+          tool: (input) => {
+            const doTurno = input?.ctx && typeof input.ctx === 'object' ? corteDoTurnoPorCtx.get(input.ctx) : undefined;
+            if (!doTurno) {
+              return refinadorDoHost
+                ? refinadorDoHost(input)
+                : { full: [...(input?.proposal?.full ?? [])], candidates: [...(input?.proposal?.candidates ?? [])] };
+            }
+            return embrulharRefinadorDeTool({
+              refinar: refinadorDoHost,
+              registro: doTurno.registro,
+              cortes: corteNormalizado,
+              carregadasNoInicio: doTurno.carregadasNoInicio,
+            })(input);
+          },
+        }
+        : config.refinadores;
       const manager = createManager({
         embedder,
         can,
@@ -1663,7 +1713,7 @@ export function criarOrquestrador(config) {
         // saída idêntica à de antes do refino, R1). `refinerBudgetMs`/`refinersBudgetMs` só
         // entram quando `config.refino` os declara — omitidos, o kairos usa os próprios defaults
         // (`DEFAULT_REFINER_BUDGET_MS`=600, `DEFAULT_REFINERS_BUDGET_MS`=800).
-        ...(config.refinadores ? { refiners: config.refinadores } : {}),
+        ...(refinadoresDoManager ? { refiners: refinadoresDoManager } : {}),
         ...(config.refino?.prazoMs !== undefined ? { refinerBudgetMs: config.refino.prazoMs } : {}),
         ...(config.refino?.prazoGeralMs !== undefined ? { refinersBudgetMs: config.refino.prazoGeralMs } : {}),
         // R6: ativação de skill pelo HOST, sempre `'host'` — não é opcional aqui (ver
@@ -2139,6 +2189,7 @@ export function criarOrquestrador(config) {
     const ctxDePromocao = Object.assign(Object.create(Object.getPrototypeOf(ctx ?? {})), ctx, { __promocao: true });
     // O piso por chave do segundo discover tem de decidir com as MESMAS chaves do turno.
     if (ctx && chavesPorCtx.has(ctx)) chavesPorCtx.set(ctxDePromocao, chavesPorCtx.get(ctx));
+    if (ctx && corteDoTurnoPorCtx.has(ctx)) corteDoTurnoPorCtx.set(ctxDePromocao, corteDoTurnoPorCtx.get(ctx));
     const prepared = await bridge.prepareTurn({
       text: texto,
       ctx: ctxDePromocao,
@@ -2698,6 +2749,19 @@ export function criarOrquestrador(config) {
     // — não um literal escrito à mão aqui: sem a chave, `discover()` desreferencia
     // `state.recentUse` de um `undefined` e crasha (ver report do review de Fase 3).
     const estadoAnterior = entrada.estado || { system: systemVazio(), turno: 0, kairos: initialSessionState() };
+    // Corte de função: o que o refinador do anel `tool` precisa saber DESTE turno. A base de "já carregada" é o
+    // estado ao FIM do turno anterior (mais o piso), tirada ANTES das promoções deste turno (fontes, carga por
+    // chave, I3a): capacidade que só está carregada por causa delas é 1ª carga.
+    const corteDoTurno = config.corteDeFuncao
+      ? {
+        registro: [],
+        carregadasNoInicio: carregadasNoInicioDoTurno(
+          estadoAnterior.kairos?.loadedProviders,
+          config.capacidades.filter((cap) => cap.piso === true).map((cap) => cap.id),
+        ),
+      }
+      : null;
+    if (corteDoTurno) corteDoTurnoPorCtx.set(ctx, corteDoTurno);
 
     // Contribuições semânticas (`floor: false`) viram `ConversationItem` a
     // cada turno — `read(ctx)` só pode rodar agora, contra o `ctx` DESTE
@@ -4243,6 +4307,8 @@ export function criarOrquestrador(config) {
           : {}),
         // Carga por chave: o que cada chave do turno carregou (só com `config.cargaPorChave`).
         ...(cargaDoTurno ? { cargaPorChave: cargaDoTurno.porChave } : {}),
+        // Corte de função: as decisões deste turno (só com `config.corteDeFuncao`).
+        ...(corteDoTurno ? { corteDeFuncao: corteDoTurno.registro } : {}),
         discover: prepared.discoverResult,
         // `embeds` (Task 11, spec F1; `'trivial'` desde o I1 da revisão final / kairos 0.832):
         // quantos embeds de CONSULTA a fábrica fez ela mesma neste turno (0 quando o host mandou
@@ -4754,6 +4820,8 @@ export function criarOrquestrador(config) {
         texto,
         // Carga por chave: o que cada chave do turno carregou (só com `config.cargaPorChave`).
         ...(cargaDoTurno ? { cargaPorChave: cargaDoTurno.porChave } : {}),
+        // Corte de função: as decisões deste turno (só com `config.corteDeFuncao`).
+        ...(corteDoTurno ? { corteDeFuncao: corteDoTurno.registro } : {}),
         // A-I6: `true` quando o laço estourou `maxIteracoes` e o turno foi concluído por
         // aterrissagem suave (`aviso` = o texto a mostrar). Sem `aviso` quando não estourou.
         tetoAtingido,

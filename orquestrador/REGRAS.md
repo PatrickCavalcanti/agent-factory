@@ -109,7 +109,7 @@ por chave isso acontece no meio da sessão (`src/chaves.js:48-52`).
 Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o host não muda.
 
 - **R9 — `indiceDeCapacidades` ligado sem capacidade fora do piso.** A montagem recusa quando
-  nenhuma capacidade tem `piso: false` com ao menos uma função (`src/index.js:1488-1500`). O porquê: o
+  nenhuma capacidade tem `piso: false` com ao menos uma função (`src/index.js:1529-1541`). O porquê: o
   índice só lista capacidade que o ranking pode deixar de fora. Sem nenhuma, o bloco sairia vazio, e o
   host acharia que a rede de segurança da descoberta existe sem ela existir. A recusa transforma
   esquecimento em erro de montagem. Ver `CAPACIDADES.md` §11.
@@ -119,6 +119,14 @@ Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o 
   `catalogoDeChaves` (`src/carga-por-chave.js`, chamado em `src/index.js` na montagem do catálogo). O
   porquê: nome errado nunca bateria com as chaves do turno, e a capacidade ficaria sem carregar, sem erro
   nenhum. Ver `CAPACIDADES.md` §9.1.
+
+- **R11 — `corteDeFuncao` inválido.** A montagem recusa valor fora do domínio, com o caminho do campo
+  na mensagem: `carregada.cabeca` e `corte`/`corteKairos` fora de 0..1, `carregada.z` que não é número
+  maior que 0, `minFuncoes`/`maxPromovidas` que não são inteiros ≥ 1, `excluir`/`funcoes` que não são lista
+  de textos, `campo` fora de `notaBase | notaCabeca | confidence` (`src/corte-de-funcao.js`,
+  `normalizarCorte`, chamado em `src/index.js` na montagem do catálogo). O porquê: o Igris avisava e ficava no
+  padrão porque lia variável de ambiente; num objeto de config isso esconderia o erro, e um corte `0`
+  deixaria tudo passar, promovendo até 3 funções por capacidade em todo turno. Ver `CAPACIDADES.md` §12.
 
 ## Outras garantias do motor (não são recusa)
 

@@ -486,3 +486,79 @@ ranking, da carga por chave (§9.1) e do decisor.
 **Por que mora na fábrica.** Era do Igris (spec `2026-10-19`) e ficou fora da extração por depender de
 coisas do Igris (`ORIGEM.md` D8). Dois hosts querem o mesmo bloco; o texto precisa casar com `nomeExposto`
 e com o formato do cartão, que são desta fábrica.
+
+
+## 12. Corte de função em capacidade já carregada (0.3.0)
+
+Isto vale para quem declara capacidades semânticas (`piso: false`) e liga `corteDeFuncao`. Desligado, o anel
+`tool` é o de antes, byte a byte.
+
+**O problema, medido no Igris.** No anel `tool` o Kairos propõe `full` (manual completo no prompt) para toda
+função com nota ≥ 0,15, até 3 por capacidade, e o refinador do host nunca rebaixa essa proposta. Numa
+sessão real entraram **197 manuais, e 10 foram chamados**. O system é append-only: manual que entra não
+sai, então o custo se acumula (spec do Igris `2026-10-24-corte-de-funcao-em-capacidade-carregada-design.md`).
+Os dois números de calibração saíram de 4 sessões reais: com cabeça ≥ 0,4 ou destaque z ≥ 2,5 os 10 manuais
+úteis ficaram e 157 dos 187 desnecessários saíram.
+
+**O que a fábrica faz.** Embrulha o refinador do anel `tool` (`config.refinadores.tool`, ou a própria
+proposta do Kairos quando o host não tem refinador) e aplica o corte DEPOIS dele. O que não passa vira
+`candidate`: continua listado no cartão e carregável sob demanda. O embrulho também responde **antes** do prazo
+do Kairos: refinador lento, que lança ou que devolve formato inválido não deixa a proposta passar sem corte
+(o corte vale então sobre a proposta, só pelo z, sem promoção), e o marcador `fallback:<motivo>` fica no
+registro (`src/corte-de-funcao.js`, `embrulharRefinadorDeTool`).
+
+**Regra 1: capacidade já carregada (`corteDeFuncao.carregada`).** Capacidade que já estava no prompt no
+início do turno só ganha manual **novo** de função com sinal forte:
+
+| Sinal | Padrão | O que é |
+|---|---|---|
+| `cabeca` | 0,4 | nota da cabeça local (`explain[ref].notaCabeca`) do refinador do host |
+| `z` | 2,5 | destaque da nota `final` do Kairos dentro da capacidade, em desvios-padrão |
+| `minFuncoes` | 4 | abaixo disso o z não conta (poucas funções não dão média) |
+| `maxPromovidas` | 3 | teto de `candidate → full` por capacidade e por turno, pela nota da cabeça |
+| `excluir` | `[]` | ids de capacidade fora da regra |
+
+Passa intacto: a **1ª carga** da capacidade, função `pinned`, função que já tem manual (`hasManual`) e as
+capacidades de `excluir`. Promoção (`candidate → full`) só quando o refinador deu nota da cabeça a alguém; sem
+nenhuma nota (fallback, ou nenhum refinador) vale só o z e **não promove**.
+
+**A base é o FIM do turno anterior.** "Já carregada" é o `loadedProviders` do estado que o host devolveu
+no fim do turno anterior (`estadoAnterior.kairos.loadedProviders`), mais as capacidades `piso: true`
+(`carregadasNoInicioDoTurno`). Nunca o estado que o Kairos recebe no turno, porque este já traz as
+capacidades promovidas neste turno pelas fontes (§9), pela carga por chave (§9.1) e pelo I3a: uma capacidade
+que só está carregada por causa delas é 1ª carga, e cortá-la deixaria o `carregar` sem efeito
+(Igris, revisão do conjunto; `src/index.js`, `corteDoTurno`). O piso entra na base porque o turno trivial
+não roda o discover e deixa o `loadedProviders` vazio: sem o piso, a mensagem seguinte tratava a capacidade
+fixa como 1ª carga e os manuais dela entravam com nota da cabeça perto de zero (sessão `5a5eda4e` do Igris).
+
+**Regra 2: funções semânticas de capacidade do piso (`corteDeFuncao.semanticasDoPiso`).** Para a capacidade
+que tem uma parte no piso e outra por relevância (no Igris, a `memoria`: 5 funções fixas e 11 semânticas). O
+host diz quais funções são as semânticas: `{ memoria: ['mem_listar', …] }`. Elas só ficam `full` com
+`notaBase` ≥ 0,45 (sem nota do refinador, `final` do Kairos ≥ 0,6), e a promoção `candidate → full` acontece
+com nota do refinador acima do corte, até 3 por capacidade. A forma de objeto `{ funcoes, campo, corte,
+corteKairos }` troca os números: **0,45 e 0,6 foram calibrados com o embedder do Igris** (nas intenções
+positivas a nota ficou em 0,329–0,823, nas negativas até 0,438; as zonas se sobrepõem e 0,45 prefere não
+carregar à toa). Outro embedder exige medir de novo. A fábrica não conhece nome de capacidade (o Igris
+guardava a lista no código dele). Quem usa as duas regras costuma pôr a capacidade das semânticas do piso em
+`carregada.excluir`, para as duas não decidirem a mesma função.
+
+**Configuração.** Objeto, não variável de ambiente (a fábrica não lê `process.env`). `ativo: false`, no topo
+ou em `carregada`, só REGISTRA as decisões, sem rebaixar nem promover: é como o host mede antes de ligar.
+Valor inválido (cabeça fora de 0..1, z ≤ 0, lista que não é lista) **recusa a montagem** com o caminho do
+campo — o Igris avisava e ficava no padrão porque lia variável de ambiente.
+
+**O que sai no rastro.** O retorno de `executarTurno` e o `aoMontar` trazem `corteDeFuncao`, a lista das decisões
+do turno. Cada uma: `regra` (`carregada` ou `semanticas-do-piso`), `chamada` (o anel `tool` pode ser
+refinado mais de uma vez no turno: discover e loop), `ref`, `eraFull`, `passa`, as notas, `ativo` e `promovida`.
+Quando o refinador do host falhou, uma linha `{ chamada, refinador: 'fallback:timeout|erro|invalido' }`. O motivo
+também fica no `explain` da função: `(corte-carregada)`, `(corte-carregada:promovida)`,
+`(corte-semanticas-do-piso)`.
+
+**O que isto não faz.** Não tira manual que já está no prompt (quem garante "carregou, fica" é o acumulado
+do prompt-builder, que só tira manual de função que perdeu a permissão). Não mexe em piso. Não substitui o
+refinador do host: o corte vale depois dele. Não entra nos anéis `provider`, `skill`, `source` e `conversation`.
+
+**Por que mora na fábrica.** Era do Igris, acoplado a nomes dele (`memoria`, variáveis `IGRIS_CORTE_*`). A
+parte que decide, o refinador embrulhado, a base do fim do turno anterior e o registro por chamada dependem
+do estado do kairos e do `prepareTurn`, que são da fábrica; o que muda de host para host (as listas e os
+números) é parâmetro.
