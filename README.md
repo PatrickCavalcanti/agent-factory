@@ -10,9 +10,13 @@ vários projetos. Um pacote, três módulos:
 | Decisores | `decisoes/` | Os decisores que alimentam a seleção: Jev (decisão por modelo), decisor local (cabeça treinada sobre embeddings), loop de decisão, refinadores por anel e o treino (registro de casos, versões, lote). Ler [`decisoes/ARCHITECTURE.md`](./decisoes/ARCHITECTURE.md). |
 | Apoio | `apoio/` | Peças puras do host que não dependem do Igris: continuidade entre turnos, leitura da intenção, conversa a partir do histórico, pista de contexto, valores do registro. |
 
-Estado: **0.1.0**, cópia do Igris genericizada. O texto dos documentos copiados ainda descreve o
-Igris como host de referência; o que ainda é vocabulário do Igris está em
-[`docs/pendencias/2026-10-31-criacao.md`](./docs/pendencias/2026-10-31-criacao.md).
+Estado: **0.3.0** (`package.json`). Dois hosts usam a fábrica: o **Igris** (chat e agentes de fundo; ainda
+na 0.1.x) e o **Ariadne** (chat do Dev Mode e jobs da Pipeline V2; 0.2.5 até o bump para a 0.3.0). O documento de estado é
+[`orquestrador/ARCHITECTURE.md`](./orquestrador/ARCHITECTURE.md): diz o que cada campo de configuração faz e
+por que ele existe (chaves, cartão sugerido, uso declarado, cauda e despejo, fonte, job sem conversa).
+`orquestrador/REGRAS.md` e `orquestrador/CAPACIDADES.md` têm as regras de montagem e o desenho de capacidade.
+Parte do texto copiado do Igris ainda o descreve como host de referência (histórico); o que ainda é
+vocabulário do Igris está em [`docs/pendencias/2026-10-31-criacao.md`](./docs/pendencias/2026-10-31-criacao.md).
 
 ## Instalação
 
@@ -21,10 +25,12 @@ Sem registry: dependência git por semver (tag `vX.Y.Z` no repositório).
 ```json
 {
   "dependencies": {
-    "@okds/agent-factory": "git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^0.1.0"
+    "@okds/agent-factory": "git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^0.3.0"
   }
 }
 ```
+
+Em `0.x`, o `^` não atravessa minor (`^0.3.0` é `>=0.3.0 <0.4.0`); por isso cada host fixa a minor que usa.
 
 **O ponto depois de `github.com` é de propósito** (FQDN absoluto). Sem ele o resolver do pnpm trata
 o host como "hospedado" e sonda cada repositório uma vez por site de declaração; qualquer sonda

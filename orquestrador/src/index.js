@@ -26,6 +26,11 @@ import { avisoDeDescartadas } from './despejo/aviso.js';
 import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas, funcoesDoJevDoTurno, funcoesDoJevDeclaradas } from './despejo/comportamento.js';
 import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
+import { contribuicaoDoIndiceDeCapacidades, foraDoPisoComFuncao } from './indice-de-capacidades.js';
+import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
+import { conferirTetoDoSystem, validarTetoDoSystem } from './teto-do-system.js';
+import { registrarCasoDoTurno, refsPorNomeChamado } from './registro-de-casos.js';
+import { normalizarCorte, validarCorteDeFuncao, embrulharRefinadorDeTool, carregadasNoInicioDoTurno } from './corte-de-funcao.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
 import { montarContextoDeMemorias } from './memoria-do-loop.js';
@@ -159,6 +164,63 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   no turno (spec Igris 2026-11-25): `completo` (default) lista todas as funções com descrição; `funcoesSugeridas`
  *   só os nomes das funções que o anel `tool` marcou para o turno (até 5, pela nota); `nenhum` não manda o card
  *   (o modelo usa o índice). A legenda de `candidatos` acompanha o formato, salvo se o host passar a sua.
+ * @property {boolean | { cabecalho?: string, prioridade?: number }} [indiceDeCapacidades] Liga o ÍNDICE DE
+ *   CAPACIDADES (0.3.0): um bloco `<capability_index>` no system estável com uma linha por capacidade FORA do piso
+ *   (id, primeira frase da `descricao`, nome exato de cada função). É a rede de segurança da descoberta: o
+ *   ranking pode deixar uma capacidade fora do turno, o índice garante que o modelo sabe que ela existe e como
+ *   carregá-la. Calculado uma vez na montagem do catálogo (texto estável na sessão — bloco de cache). O formato
+ *   do cabeçalho segue `cartaoSugerido`; `cabecalho` o substitui por inteiro; `prioridade` (default
+ *   `prioridadeDasCapacidades - 0.5`, ou 49.5) é a posição no system e entra na validação de empate dos pisos.
+ *   Recusa na montagem (R9) quando não há nenhuma capacidade `piso: false` com função. Ver CAPACIDADES.md §11.
+ * @property {Record<string, string[]>} [cargaPorChave] CARGA POR CHAVE (0.3.0): mapa `chave → [ids de capacidade]`. A
+ *   cada turno, as capacidades das chaves do turno (`chaves(ctx)`, obrigatória com o campo) entram
+ *   carregadas — mesmo mecanismo do `carregar` das fontes (promoção no estado do kairos antes do primeiro
+ *   `prepareTurn`), sem depender do ranking. É para o que o host sabe pelo trabalho (tela com relatório, pedido com
+ *   anexos) e não deve depender de a frase do usuário casar. Recusa na montagem (R10): chave fora de
+ *   `catalogoDeChaves`, id que não é de uma capacidade declarada, lista vazia, mapa sem `catalogoDeChaves` ou sem
+ *   `chaves` (sem ela o turno recebe todo o catálogo e a carga viraria piso disfarçado).
+ *   Com o campo, `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }` (o que cada
+ *   chave carregou neste turno). Ver CAPACIDADES.md §9.1.
+ * @property {{ chars: number }} [tetoDoSystem] TETO POR TAMANHO do system (0.3.0), em caracteres. `limiteDeTools` só
+ *   conta tools; o system é append-only e pode crescer sem que nenhum limite de contagem dispare. Depois de montar o
+ *   prompt, a fábrica mede `payload.system`; acima do teto acrescenta `{ ref: 'teto-do-system', error }` a
+ *   `renderErrors` e chama `aoEvento({ tipo: 'fabrica:teto-do-system', turno, tamanho, teto })`. É AVISO: o turno
+ *   completa. Ausente, nada é medido; `chars` que não é inteiro maior que 0 recusa a montagem. Ver ARCHITECTURE.md §7.
+ * @property {(caso: object, insumos: { texto: string, ctx: any, operacoes: object[], discover: object, vetores: number[][] }) => void | Promise<void>} [aoRegistrarCaso]
+ *   REGISTRO DE CASOS PARA TREINO (0.3.0). No fecho de cada turno NÃO trivial a fábrica monta o caso do turno com
+ *   `montarCaso` (`@okds/agent-factory/decisoes/caso`) e o entrega aqui, a quem decide onde gravar. O caso leva o que a
+ *   fábrica tem: vetores da consulta, funções chamadas (nome exposto resolvido para `capacidade/tool/função`), sinal do
+ *   kairos (`discover.explain`) e `ativasNoInicio` (o `loadedProviders` do estado dado ao primeiro discover). Fire-and-
+ *   forget: promessa não é aguardada; exceção (ou rejeição) vira `{ ref: 'registro-de-casos', error }` em `renderErrors`
+ *   e o turno completa. O 2º argumento traz os insumos crus para o host refazer ou completar o caso. Turno trivial não
+ *   registra. Ausente, nada é montado. Ver `decisoes/ARCHITECTURE.md` e CAPACIDADES.md.
+ * @property {(ctx: any) => { sessionId?: string, interactionId?: string, origem?: 'chat'|'fundo'|'debug'|'bancada', guardarTexto?: boolean, embedderSlug?: string, selecao?: { decisoes?: object, sombras?: object[] }, ativasNoInicio?: string[] }} [dadosDoCaso]
+ *   O que SÓ o host tem para o caso (lido a cada turno, só com `aoRegistrarCaso`): a decisão do decisor local por anel
+ *   (`selecao`, a forma de `serializarSelecao` de `decisoes/local`: sem ela o caso fica sem `carregadas` e a triagem o
+ *   marca `sem-selecao`), o slug do embedder que gerou o vetor (sem ele, `sem-slug`), sessão/interação/origem e se o
+ *   texto pode ser guardado (padrão: não). `ativasNoInicio` aqui vence o da fábrica (use quando o trace do refinador
+ *   o capturou). Exceção aqui também vai a `renderErrors` e o turno não registra caso.
+ * @property {{ carregada?: boolean | { ativo?: boolean, cabeca?: number, z?: number, minFuncoes?: number, maxPromovidas?: number, excluir?: string[] }, semanticasDoPiso?: Record<string, string[] | { funcoes: string[], campo?: string, corte?: number, corteKairos?: number }>, ativo?: boolean }} [corteDeFuncao]
+ *   CORTE DE FUNÇÃO no anel `tool` (0.3.0). No anel `tool` o Kairos propõe `full` (manual completo no prompt) para toda
+ *   função com nota ≥ 0,15 e o refinador do host nunca rebaixa essa proposta; o Igris mediu 197 manuais no system
+ *   para 10 chamados. Com este campo a fábrica EMBRULHA o refinador do anel `tool` (`config.refinadores.tool`, ou a
+ *   própria proposta do Kairos quando o host não tem um) e aplica o corte depois dele; `full` que não passa vira
+ *   `candidate` (continua no cartão, carregável sob demanda). Duas regras:
+ *   - `carregada` (`true` ou objeto; ausente = desligada): capacidade que já estava no prompt no início do turno
+ *     (`loadedProviders` do estado ao FIM do turno anterior MAIS as capacidades `piso: true`; NUNCA as promovidas
+ *     neste turno por fonte, chave ou I3a — a 1ª carga passa intacta) só ganha manual novo de função com sinal
+ *     forte: nota da cabeça local ≥ `cabeca` (padrão 0,4) ou destaque z ≥ `z` (padrão 2,5) entre as funções
+ *     dela (`minFuncoes` padrão 4). `candidate` que passa sobe, até `maxPromovidas` (padrão 3) por capacidade.
+ *     `excluir`: ids de capacidade fora da regra (padrão `[]`: a lista é do host).
+ *   - `semanticasDoPiso`: `{ [idCapacidade]: funções[] }`, para a capacidade que tem parte no piso e parte por
+ *     relevância: as funções listadas só ficam `full` com nota (`notaBase`) ≥ corte (padrão 0,45; sem nota, o
+ *     `final` do Kairos ≥ 0,6). A forma de objeto troca `campo`/`corte`/`corteKairos` — os padrões foram
+ *     calibrados pelo Igris com o embedder dele, e outro embedder exige medir de novo.
+ *   `ativo: false` (no topo ou em `carregada`) só REGISTRA as decisões, sem rebaixar nem promover (para medir).
+ *   Valor inválido, campo vazio e capacidade ou função que não existem em `capacidades` recusam a montagem (R11). Sem nota da cabeça (refinador degradado, ou nenhum refinador), vale só o z e
+ *   não promove. Com o campo, o retorno de `executarTurno` e o `aoMontar` trazem `corteDeFuncao`: as decisões do
+ *   turno (`regra`, `chamada`, `ref`, `eraFull`, `passa`, notas, `ativo`, `promovida`) e o marcador
+ *   `refinador: 'fallback:<motivo>'` quando o refinador do host falhou. Ver CAPACIDADES.md §12.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -1469,7 +1531,35 @@ export function criarOrquestrador(config) {
     return calculado;
   }
 
+  // Corte de função: decisões e base do turno corrente, por `ctx` (mesmo molde de `chavesPorCtx`: o refinador
+  // recebe o `ctx` do `prepareTurn` em `input.ctx`, e a cópia da promoção herda a entrada do original).
+  const corteDoTurnoPorCtx = new WeakMap();
+
   let catalogo = null;
+
+  /**
+   * Contribuição do índice de capacidades (`config.indiceDeCapacidades`), ou `null` com o campo desligado.
+   * Recusa (R9) o índice ligado sem capacidade fora do piso: um bloco vazio ligado "de propósito" é
+   * esquecimento, e o modelo ficaria achando que a rede de segurança existe.
+   */
+  function contribuicaoDoIndice() {
+    const opcoes = config.indiceDeCapacidades;
+    if (!opcoes) return null;
+    const { cabecalho, prioridade } = typeof opcoes === 'object' ? opcoes : {};
+    const temForaDoPiso = config.capacidades.some(foraDoPisoComFuncao);
+    if (!temForaDoPiso) {
+      throw new Error(
+        'indiceDeCapacidades ligado sem capacidade fora do piso (`piso: false` com função): o índice '
+        + 'sairia vazio e o modelo acharia que a rede de segurança da descoberta existe. Desligue o campo '
+        + 'ou declare ao menos uma capacidade semântica.',
+      );
+    }
+    return contribuicaoDoIndiceDeCapacidades(config.capacidades, {
+      formato: cartaoSugerido,
+      cabecalho,
+      prioridade: prioridade ?? (config.prioridadeDasCapacidades ?? 50) - 0.5,
+    });
+  }
 
   function montarCatalogo() {
     if (catalogo) return catalogo;
@@ -1540,6 +1630,22 @@ export function criarOrquestrador(config) {
           + 'tirá-la do ranking.',
         );
       }
+      // R10: a carga por chave é conferida na montagem — chave ou id errados ficariam, no turno, como "a chave
+      // não bateu" e a capacidade nunca seria carregada, sem erro nenhum.
+      const errosDaCarga = validarCargaPorChave(
+        config.cargaPorChave, config.catalogoDeChaves, new Set(config.capacidades.map((cap) => cap.id)),
+        typeof config.chaves === 'function',
+      );
+      if (errosDaCarga.length) {
+        throw new Error(
+          `cargaPorChave inválida: ${errosDaCarga.join('; ')}. A carga por chave só vale para chaves do `
+          + '`catalogoDeChaves` e ids de capacidades declaradas, com `chaves` dizendo as do turno; um nome errado '
+          + 'nunca bateria com o turno e a capacidade ficaria sem carregar, sem erro nenhum.',
+        );
+      }
+      // Teto do system: valor inválido desligaria o teto em silêncio (`conferirTetoDoSystem` o ignora de propósito).
+      const errosDoTeto = validarTetoDoSystem(config.tetoDoSystem);
+      if (errosDoTeto.length) throw new Error(errosDoTeto.join('; '));
       // Gate de permissão por tool — chamado pelo kairos a cada discover
       // (rank/hydrate) e de novo aqui embaixo na ponte genos (`createGenosBridge`),
       // com a MESMA função: os dois precisam concordar, senão uma tool aparece
@@ -1590,6 +1696,34 @@ export function criarOrquestrador(config) {
       // `config.limiares = {}` (objeto vazio, sem call site real hoje) o código antigo
       // passava `thresholds: {}`; `opcoesDeLimiares` não passa a chave — equivalente para
       // o kairos (nenhum threshold real muda), comportamento novo mantido.
+      // Corte de função (0.3.0): valor inválido recusa a montagem. O embrulho vale só no anel `tool`; os outros
+      // anéis seguem o refinador cru do host. Sem o turno registrado no `ctx` (não deveria acontecer: todo
+      // `prepareTurn` da fábrica leva o `ctx` do turno), o refinador do host segue como era.
+      const corteNormalizado = config.corteDeFuncao ? normalizarCorte(config.corteDeFuncao) : null;
+      if (corteNormalizado) {
+        const errosDoCorte = validarCorteDeFuncao(corteNormalizado, config.capacidades);
+        if (errosDoCorte.length) throw new Error(`corteDeFuncao inválido: ${errosDoCorte.join('; ')}`);
+      }
+      const refinadorDoHost = config.refinadores?.tool ?? null;
+      const refinadoresDoManager = corteNormalizado
+        ? {
+          ...(config.refinadores ?? {}),
+          tool: (input) => {
+            const doTurno = input?.ctx && typeof input.ctx === 'object' ? corteDoTurnoPorCtx.get(input.ctx) : undefined;
+            if (!doTurno) {
+              return refinadorDoHost
+                ? refinadorDoHost(input)
+                : { full: [...(input?.proposal?.full ?? [])], candidates: [...(input?.proposal?.candidates ?? [])] };
+            }
+            return embrulharRefinadorDeTool({
+              refinar: refinadorDoHost,
+              registro: doTurno.registro,
+              cortes: corteNormalizado,
+              carregadasNoInicio: doTurno.carregadasNoInicio,
+            })(input);
+          },
+        }
+        : config.refinadores;
       const manager = createManager({
         embedder,
         can,
@@ -1601,7 +1735,7 @@ export function criarOrquestrador(config) {
         // saída idêntica à de antes do refino, R1). `refinerBudgetMs`/`refinersBudgetMs` só
         // entram quando `config.refino` os declara — omitidos, o kairos usa os próprios defaults
         // (`DEFAULT_REFINER_BUDGET_MS`=600, `DEFAULT_REFINERS_BUDGET_MS`=800).
-        ...(config.refinadores ? { refiners: config.refinadores } : {}),
+        ...(refinadoresDoManager ? { refiners: refinadoresDoManager } : {}),
         ...(config.refino?.prazoMs !== undefined ? { refinerBudgetMs: config.refino.prazoMs } : {}),
         ...(config.refino?.prazoGeralMs !== undefined ? { refinersBudgetMs: config.refino.prazoGeralMs } : {}),
         // R6: ativação de skill pelo HOST, sempre `'host'` — não é opcional aqui (ver
@@ -1659,12 +1793,16 @@ export function criarOrquestrador(config) {
       // chaves que declaram — preenchidas no bloco abaixo, lidas por `executarTurno`.
       let comChave = [];
       let chavesDeclaradas = [];
-      if (config.contribuicoes?.length || pisoDasFontes.length) {
+      // O índice de capacidades entra junto das contribuições do host ANTES das validações, para a
+      // prioridade dele passar pela mesma checagem de empate.
+      const doIndice = contribuicaoDoIndice();
+      const contribuicoesDoHost = [...(config.contribuicoes ?? []), ...(doIndice ? [doIndice] : [])];
+      if (contribuicoesDoHost.length || pisoDasFontes.length) {
         // União ANTES de validar — as fontes entram no MESMO catálogo que `config.contribuicoes`,
         // então a validação abaixo (floor booleano, `volatil` obrigatório em piso, formato de
         // `ref` em semântica) precisa valer para as duas origens. Duplicar a validação por
         // origem reabriria a mesma lacuna que a validação única já fecha.
-        const todasContribuicoes = [...(config.contribuicoes ?? []), ...pisoDasFontes];
+        const todasContribuicoes = [...contribuicoesDoHost, ...pisoDasFontes];
 
         // VEM ANTES das demais, de propósito: uma contribuição sem `floor`
         // declarado como boolean (ausente, ou qualquer coisa que não seja
@@ -1824,7 +1962,7 @@ export function criarOrquestrador(config) {
       // união (`config.contribuicoes` + `pisoDasFontes`) que alimenta `pisoContribs`
       // acima — recomputada aqui porque `todasContribuicoes` é local ao bloco `if` e não
       // está no escopo deste ponto.
-      const refsVolateisDeclaradas = [...(config.contribuicoes ?? []), ...pisoDasFontes]
+      const refsVolateisDeclaradas = [...contribuicoesDoHost, ...pisoDasFontes]
         .filter((c) => c.floor === true && (c.volatil === true || c.chaves !== undefined))
         .map((c) => c.ref);
       // C3P: a FACHADA de manager (a que intercepta `discover` para publicar a seleção e,
@@ -2012,10 +2150,12 @@ export function criarOrquestrador(config) {
    * encadeado em cima. A Task 9 removeu o chamador de `aoDescobrir` (refino por anel do kairos
    * 0.833 não precisa de turno extra). A Task 10 (spec "decisor por anel: refinadores do kairos",
    * R10) removeu o chamador das FONTES: `carregar` das fontes entra no ESTADO do PRIMEIRO
-   * `prepareTurn` (`estadoKairosDoTurno`, em `executarTurno`), sem turno extra. O ÚNICO chamador
-   * restante é I3a (revisão final do conjunto): o provider dono de uma skill SUGERIDA sem estar
-   * carregado — a única promoção que só se descobre DEPOIS de ver o resultado do primeiro
-   * discover, porque depende do próprio `discover.skills.suggest`.
+   * `prepareTurn` (`estadoKairosDoTurno`, em `executarTurno`), sem turno extra. Restam DOIS
+   * chamadores, ambos promoções que só se descobrem DEPOIS de ver o primeiro discover: I3a
+   * (revisão final do conjunto) — o provider dono de uma skill SUGERIDA sem estar carregado,
+   * porque depende do próprio `discover.skills.suggest` — e o loop do Jev (`config.loop?.rodar`),
+   * que promove o que pediu carregar. Com o loop rodando, as duas se fundem numa chamada só (ver
+   * o comentário junto da chamada do I3a em `executarTurno`).
    *
    * @param {object} bridge
    * @param {object} manager
@@ -2071,6 +2211,7 @@ export function criarOrquestrador(config) {
     const ctxDePromocao = Object.assign(Object.create(Object.getPrototypeOf(ctx ?? {})), ctx, { __promocao: true });
     // O piso por chave do segundo discover tem de decidir com as MESMAS chaves do turno.
     if (ctx && chavesPorCtx.has(ctx)) chavesPorCtx.set(ctxDePromocao, chavesPorCtx.get(ctx));
+    if (ctx && corteDoTurnoPorCtx.has(ctx)) corteDoTurnoPorCtx.set(ctxDePromocao, corteDoTurnoPorCtx.get(ctx));
     const prepared = await bridge.prepareTurn({
       text: texto,
       ctx: ctxDePromocao,
@@ -2616,10 +2757,12 @@ export function criarOrquestrador(config) {
     // contribuições com chave entram. A decisão de verdade mora no `read` registrado no catálogo
     // (mesmo critério, `contribuicaoBateComChaves`); aqui é o que o acumulador precisa saber —
     // quais retirar do prompt acumulado — e o que o `aoMontar` publica.
-    const chavesAtivas = Boolean(config.chaves) || comChave.length > 0;
+    const chavesAtivas = Boolean(config.chaves) || comChave.length > 0 || Boolean(config.cargaPorChave);
     const { chaves: chavesDesteTurno, erros: errosDeChaves } = chavesAtivas
       ? chavesDoTurnoMemo(ctx)
       : { chaves: [], erros: [] };
+    // Carga por chave: o que as chaves deste turno carregam (calculado uma vez; vira promoção mais abaixo).
+    const cargaDoTurno = config.cargaPorChave ? capacidadesDaCarga(config.cargaPorChave, chavesDesteTurno) : null;
     const refsComChaveQueEntraram = comChave
       .filter((c) => contribuicaoBateComChaves(c, chavesDesteTurno)).map((c) => c.ref);
     const refsComChaveQueFicaram = comChave
@@ -2628,6 +2771,19 @@ export function criarOrquestrador(config) {
     // — não um literal escrito à mão aqui: sem a chave, `discover()` desreferencia
     // `state.recentUse` de um `undefined` e crasha (ver report do review de Fase 3).
     const estadoAnterior = entrada.estado || { system: systemVazio(), turno: 0, kairos: initialSessionState() };
+    // Corte de função: o que o refinador do anel `tool` precisa saber DESTE turno. A base de "já carregada" é o
+    // estado ao FIM do turno anterior (mais o piso), tirada ANTES das promoções deste turno (fontes, carga por
+    // chave, I3a): capacidade que só está carregada por causa delas é 1ª carga.
+    const corteDoTurno = config.corteDeFuncao
+      ? {
+        registro: [],
+        carregadasNoInicio: carregadasNoInicioDoTurno(
+          estadoAnterior.kairos?.loadedProviders,
+          config.capacidades.filter((cap) => cap.piso === true).map((cap) => cap.id),
+        ),
+      }
+      : null;
+    if (corteDoTurno) corteDoTurnoPorCtx.set(ctx, corteDoTurno);
 
     // Contribuições semânticas (`floor: false`) viram `ConversationItem` a
     // cada turno — `read(ctx)` só pode rodar agora, contra o `ctx` DESTE
@@ -3160,8 +3316,14 @@ export function criarOrquestrador(config) {
     // (turno anterior) continua carregado sem a fonte pedir de novo — é `[...new Set(...)]`
     // (não há `dedupe` exportado neste arquivo; mesmo idioma usado em todo o resto do pacote,
     // ex.: `comCarregadasNoTurno` acima) sobre a UNIÃO dos dois.
-    const estadoKairosDoTurno = promocoesDasFontes.size
-      ? { ...estadoAnterior.kairos, loadedProviders: [...new Set([...estadoAnterior.kairos.loadedProviders, ...promocoesDasFontes])] }
+    // Carga por chave (0.3.0): as capacidades das chaves do turno entram como as do `carregar` das fontes —
+    // na MESMA união, antes do primeiro `prepareTurn`, então valem inclusive no turno trivial (as chaves não
+    // dependem do texto). `cargaPorChave` foi conferida na montagem: todo id é de capacidade declarada.
+    // `promocoesDasFontes` fica só com o que as FONTES pediram: o rastro `promocoes.fontes` é de fonte, e o que a chave
+    // carregou já sai em `cargaPorChave`. O que vai ao estado (e ao espaço do loop) é a união das duas.
+    const promocoesDoTurno = new Set([...promocoesDasFontes, ...(cargaDoTurno?.ids ?? [])]);
+    const estadoKairosDoTurno = promocoesDoTurno.size
+      ? { ...estadoAnterior.kairos, loadedProviders: [...new Set([...estadoAnterior.kairos.loadedProviders, ...promocoesDoTurno])] }
       : estadoAnterior.kairos;
 
     // `operacoes`/`avisar` — movidos para ANTES do `try` (Task 15, loop do Jev, spec
@@ -3388,7 +3550,7 @@ export function criarOrquestrador(config) {
         const capacidadesDaIntencao = (entrada.intencaoAnterior ?? []).map((i) => i?.capacidade).filter((id) => typeof id === 'string');
         const espaco = espacoDoLoop({
           capacidades: config.capacidades,
-          carregadas: capacidadesDoLoop({ explain: prepared.discoverResult.explain, promocoes: promocoesSkills, capacidades: config.capacidades, deFontes: [...promocoesDasFontes] }),
+          carregadas: capacidadesDoLoop({ explain: prepared.discoverResult.explain, promocoes: promocoesSkills, capacidades: config.capacidades, deFontes: [...promocoesDoTurno] }),
           candidatas: [...new Set([...idsCandidatos, ...capacidadesDaIntencao])],
           paramsDe,
           autorizacoes,
@@ -4126,6 +4288,24 @@ export function criarOrquestrador(config) {
       + tempos.promocao + tempos.prepareTurnAcumulacao + tempos.montagemDoPrompt
     );
 
+    // Teto por tamanho do system (0.3.0): só avisa. O aviso entra em `renderErrors` ANTES do `aoMontar`, para o
+    // host que grava o turno o ver junto do payload; o evento é metadado externo e, como `catalogo-mudo`, um
+    // handler que lança não pode derrubar o turno.
+    const excessoDoSystem = conferirTetoDoSystem(payload.system, config.tetoDoSystem);
+    if (excessoDoSystem) {
+      renderErrors.push(excessoDoSystem);
+      try {
+        config.aoEvento?.({
+          tipo: 'fabrica:teto-do-system',
+          turno: estadoAnterior.turno,
+          tamanho: String(payload.system ?? '').length,
+          teto: config.tetoDoSystem.chars,
+        });
+      } catch {
+        // engolido de propósito — mesma garantia do `fabrica:catalogo-mudo`.
+      }
+    }
+
     // Emite o payload MONTADO deste turno — uma vez, logo depois de
     // `construtor.montar(...)`. Dois consumidores: o tracer do orquestrador de
     // tela (`src/orquestrador/tracer.ts#payload`) e um inspetor ao vivo
@@ -4149,6 +4329,10 @@ export function criarOrquestrador(config) {
         ...(chavesAtivas
           ? { chaves: { doTurno: chavesDesteTurno, entraram: refsComChaveQueEntraram, ficaram: refsComChaveQueFicaram } }
           : {}),
+        // Carga por chave: o que cada chave do turno carregou (só com `config.cargaPorChave`).
+        ...(cargaDoTurno ? { cargaPorChave: cargaDoTurno.porChave } : {}),
+        // Corte de função: as decisões deste turno (só com `config.corteDeFuncao`).
+        ...(corteDoTurno ? { corteDeFuncao: corteDoTurno.registro } : {}),
         discover: prepared.discoverResult,
         // `embeds` (Task 11, spec F1; `'trivial'` desde o I1 da revisão final / kairos 0.832):
         // quantos embeds de CONSULTA a fábrica fez ela mesma neste turno (0 quando o host mandou
@@ -4655,9 +4839,28 @@ export function criarOrquestrador(config) {
         estadoDoDespejoNovo = resto;
       }
 
+      // Registro de casos para treino (0.3.0): só com `config.aoRegistrarCaso`, só em turno não trivial, fire-and-forget.
+      // Depois de `operacoes` e do discover finais; o erro do gancho vai a `renderErrors` (mesmo array do retorno).
+      // Os argumentos custam (varrem o catálogo, copiam o conjunto de capacidades): só se calculam com o gancho e em
+      // turno não trivial. `registrarCasoDoTurno` repete as duas guardas por ser chamável de fora.
+      if (typeof config.aoRegistrarCaso === 'function' && trivialDoTurno !== true) {
+        registrarCasoDoTurno({
+          config, ctx, texto: entrada.texto, trivial: false, vetores, operacoes,
+          discover: prepared.discoverResult,
+          ativasNoInicio: [...new Set(estadoKairosDoTurno.loadedProviders)],
+          refsPorNome: refsPorNomeChamado(config.capacidades, sinonimosDoCatalogo.porCru, nomeExposto),
+          renderErrors,
+          aoEvento: config.aoEvento,
+        });
+      }
+
       return {
         resultado,
         texto,
+        // Carga por chave: o que cada chave do turno carregou (só com `config.cargaPorChave`).
+        ...(cargaDoTurno ? { cargaPorChave: cargaDoTurno.porChave } : {}),
+        // Corte de função: as decisões deste turno (só com `config.corteDeFuncao`).
+        ...(corteDoTurno ? { corteDeFuncao: corteDoTurno.registro } : {}),
         // A-I6: `true` quando o laço estourou `maxIteracoes` e o turno foi concluído por
         // aterrissagem suave (`aviso` = o texto a mostrar). Sem `aviso` quando não estourou.
         tetoAtingido,

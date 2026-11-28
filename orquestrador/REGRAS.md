@@ -4,7 +4,9 @@
 
 Quem monta um orquestrador com esta fábrica segue estas regras. Quatro delas a
 fábrica cobra sozinha (recusa montar); uma quinta é garantida por default
-automático do motor, sem recusa nenhuma; as outras dependem de você.
+automático do motor, sem recusa nenhuma; as outras dependem de você. Quem declara
+**chaves** de contribuição (0.2.5) ganha mais recusas de montagem, listadas no fim
+da primeira seção.
 
 Elas não são preferência de estilo: cada uma existe porque a ausência dela
 quebrou um host de verdade. A referência é o pipeline V2 do Ariadne
@@ -56,7 +58,9 @@ de recalcular um conteúdo que nunca chegaria a renderizar de qualquer forma).
 
 `true` se o `read(ctx)` muda dentro da conversa, `false` se não muda. Declarar
 `false` é resposta; silêncio não é — `montarCatalogo` recusa a montagem e
-nomeia o `ref` que falta (`src/index.js`). Quando o discover é pulado por texto
+nomeia o `ref` que falta (`src/index.js`). **Exceção:** contribuição com `chaves`
+não declara `volatil` — ela é volátil por definição, e o valor declarado, se vier,
+é ignorado (`src/index.js:95`; `CHANGELOG.md` 0.2.5). Quando o discover é pulado por texto
 trivial, só o volátil é recalculado — o resto é reexibido como estava
 (`refsVolateisDeclaradas`, unida com `config.refsVolateis` no ponto de uso).
 
@@ -66,6 +70,77 @@ ver `test/reconstrucao-unchanged.test.js`): uma contribuição `volatil: true` �
 recalculada quando o discover volta `unchanged`; uma `volatil: false` é
 reexibida como estava, mesmo que o `read(ctx)` de fato tivesse produzido um
 valor novo. Pode confiar nos dois sentidos, não só no de recalcular.
+
+### Recusas da 0.2.5 — contribuição por chave (só para quem declara `chaves`)
+
+Cada uma vale só para quem usa o mecanismo: sem `chaves` em nenhuma contribuição, nada disto
+roda e o host não muda (`CHANGELOG.md` 0.2.5; `src/chaves.js:60`). A montagem chama as três
+conferências em ordem — forma e nome, prioridade, refs semânticos (`src/index.js:1870`,
+`src/index.js:1879`, `src/index.js:1890`) — e recusa antes de o turno rodar. O porquê de cada recusa está no item; o argumento "o erro só
+apareceria no meio da sessão, quando a chave entrasse" vale **só para a colisão de `priority`**:
+ela estoura no `acumular` quando os dois blocos têm conteúdo ao mesmo tempo, e com contribuição
+por chave isso acontece no meio da sessão (`src/chaves.js:48-52`).
+
+- **`chaves` só vale em contribuição de piso (`floor: true`).** Chave é o critério do piso; a
+  contribuição `floor: false` já tem o dela, a relevância pelo canal de conversa
+  (`src/chaves.js:24`; `src/index.js:115-122`).
+- **`chaves: []` é recusado.** Lista vazia nunca bate (`some` sobre lista vazia dá falso:
+  `src/chaves.js:8-12`), então a contribuição jamais entraria. Para "entra sempre", omita o campo
+  (`src/chaves.js:25`).
+- **Chave fora de `catalogoDeChaves` é recusada** (só com o catálogo declarado). Uma chave que
+  nenhum turno traz nunca bate; o catálogo transforma o erro de nome em erro de montagem
+  (`src/chaves.js:26`).
+- **`priority` obrigatória, e sem empate dentro do nível.** Toda contribuição com `chaves` declara
+  `priority`: sem ela cai em 50, a posição do bloco de capacidades. Duas contribuições de piso do
+  mesmo nível (`fixas`, `estaveis` ou `dinamicas`) não podem ter a mesma `priority` — com ou sem
+  chave, porque o empate estoura no `acumular` quando os dois blocos têm conteúdo ao mesmo tempo.
+  Decimal vale (51.01, 51.02) (`src/chaves.js:49-85`).
+- **`priority` igual à do bloco de capacidades é recusada** no nível estável — o default
+  (`prioridadeDasCapacidades`, padrão 50) é a posição das capacidades (`src/chaves.js:71-73`).
+- **Com `semanticaSemChave`, o ref derivado precisa ser válido.** Só para contribuição que tem
+  `chaves` **e** `semanticText` (as demais são puladas: `src/chaves.js:111`). `kind` string não vazia; ref
+  `chave/<kind>/<origem>.<id>` com três segmentos, único entre si e sem colidir com os refs já
+  ocupados no canal de conversa. O porquê: item de conversa com `ref` fora do formato é rejeitado
+  **em silêncio** pelo kairos (só um rastro no explain), e o host acreditaria ter entregue conteúdo
+  que nunca chegou ao prompt (`src/chaves.js:99-128`; `src/index.js:87-93`).
+
+### Recusas da 0.3.0 — peças novas (só para quem liga o campo)
+
+Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o host não muda.
+
+- **R9 — `indiceDeCapacidades` ligado sem capacidade fora do piso.** A montagem recusa quando
+  nenhuma capacidade tem `piso: false` com ao menos uma função (`src/index.js:1550-1556`). O porquê: o
+  índice só lista capacidade que o ranking pode deixar de fora. Sem nenhuma, o bloco sairia vazio, e o
+  host acharia que a rede de segurança da descoberta existe sem ela existir. A recusa transforma
+  esquecimento em erro de montagem. Ver `CAPACIDADES.md` §11.
+
+- **R10 — `cargaPorChave` inválida.** A montagem recusa, com todas as mensagens num só erro: chave fora
+  de `catalogoDeChaves`; id que não é de uma capacidade declarada; lista vazia ou que não é lista; mapa sem
+  `catalogoDeChaves`; mapa sem `config.chaves` (`src/carga-por-chave.js`, chamado em `src/index.js` na
+  montagem do catálogo). O porquê: nome errado nunca bateria com as chaves do turno, e a capacidade ficaria
+  sem carregar, sem erro nenhum; e sem `chaves` o turno recebe o catálogo inteiro como chaves, então o mapa
+  todo carregaria em todo turno e a carga por chave viraria piso disfarçado. Ver `CAPACIDADES.md` §9.1.
+
+- **R11 — `corteDeFuncao` inválido.** A montagem recusa valor fora do domínio, com o caminho do campo
+  na mensagem: `carregada.cabeca` e `corte`/`corteKairos` fora de 0..1, `carregada.z` que não é número
+  maior que 0, `minFuncoes`/`maxPromovidas` que não são inteiros ≥ 1, `excluir`/`funcoes` que não são lista
+  de textos, `campo` fora de `notaBase | notaCabeca | confidence` (`src/corte-de-funcao.js`,
+  `normalizarCorte`, chamado em `src/index.js` na montagem do catálogo). Também recusa, contra o catálogo
+  (`validarCorteDeFuncao`): campo **vazio** (sem `carregada` nem `semanticasDoPiso`); capacidade em
+  `semanticasDoPiso` ou `carregada.excluir` que não está em `config.capacidades`; função em
+  `semanticasDoPiso.<id>.funcoes` que a capacidade não tem. O porquê: o Igris avisava e ficava no padrão
+  porque lia variável de ambiente; num objeto de config isso esconderia o erro (um valor inválido virando `0`
+  por coerção deixaria tudo passar, promovendo até 3 funções por capacidade em todo turno). Um `0`
+  **explícito** é válido, como era no Igris (`v >= 0 && v <= 1`): é calibração do host, para medir ou
+  afrouxar; o que não passa é `''`, `null` ou texto. Nome de capacidade ou função errado nunca casaria com
+  ref nenhum e o corte ficaria desligado sem erro; o campo vazio instalaria o embrulho do refinador do anel
+  `tool`, que responde antes do prazo do Kairos, sem cortar nada. Ver `CAPACIDADES.md` §12.
+
+- **`tetoDoSystem` inválido.** A montagem recusa `tetoDoSystem` cujo `chars` não é inteiro maior que 0
+  (`'100000'`, `0`, `1.5`, objeto sem `chars`) (`src/teto-do-system.js`, `validarTetoDoSystem`, chamado em
+  `src/index.js` na montagem do catálogo). O porquê: `conferirTetoDoSystem` ignora teto inválido de
+  propósito (defesa na medição), e sem a recusa quem digitou o valor errado ficaria sem teto e sem aviso.
+  O teto em si continua sendo aviso, não recusa (`ARCHITECTURE.md` §3).
 
 ## Outras garantias do motor (não são recusa)
 
@@ -215,3 +290,35 @@ legenda diz o que fazer com ele, o guarda cobra se o passo for pulado. Já quebr
 uma vez: o card ganhou os nomes e a legenda continuou mandando "diga o que quer
 fazer em vez de inventar um nome de função" — instruindo a ignorar o que estava
 impresso logo abaixo. **Mudou um, confira os três.**
+
+### Formato do cartão: `cartaoSugerido` (0.2.4)
+
+O card de capacidade candidata tem três formatos (`src/cartao-sugerido.js:6`): `completo` (padrão,
+o card de sempre), `funcoesSugeridas` e `nenhum`.
+
+- **Valor fora dos três é recusado.** `cartaoSugerido` diferente de `completo`, `funcoesSugeridas`
+  ou `nenhum` lança `cartaoSugerido inválido: "<valor>" (use …)` na montagem do orquestrador, antes
+  do turno (`src/cartao-sugerido.js:13-15`; chamada em `src/index.js:1449`). Ausente ou `null` vale
+  `completo`.
+
+- **`funcoesSugeridas`:** o card traz só os nomes das funções que o anel `tool` marcou para o
+  turno (`full` ou `candidate`), da maior nota para a menor, **até 5**, **sem descrição**
+  (`src/cartao-sugerido.js:7`, `src/cartao-sugerido.js:27-45`). Sem nenhuma entrada do anel `tool`
+  para a capacidade, o card diz a frase fixa `Capacidade sugerida; funções no índice de capacidades.`
+  (`src/cartao-sugerido.js:8`, `src/cartao-sugerido.js:43-45`). A legenda de `candidatos` muda junto:
+  manda carregar o manual pelo **nome da função**, nunca pelo nome da capacidade
+  (`src/cartao-sugerido.js:47-65`).
+- **Por que existe (medido no Igris):** os cartões sugeridos eram 55–90% da mensagem do turno —
+  14 a 27 mil caracteres por turno, nunca em cache — e o modelo não usou nenhum deles, enquanto os
+  nomes das funções já estão no índice de capacidades (spec do Igris
+  `docs/superpowers/specs/2026-11-25-cartao-sugerido-e-uso-declarado-do-jev-design.md`, §1, linha 15;
+  auditoria do prompt no insight do Igris
+  `docs/insights/2026-11-25-auditoria-do-prompt-duplicacoes-e-cartoes.md`, §2: 23,1 mil caracteres
+  nos 8 cartões). O `CHANGELOG.md` 0.2.4 registra o formato, mas não cita o insight; a fonte dos
+  números é a spec (o "14 a 27 mil caracteres" está na linha 15 dela); o comentário de
+  `src/cartao-sugerido.js:1-4` só traz o "55–90%".
+- **Por que a legenda acompanha o formato:** é a mesma regra do parágrafo acima — o card dá o
+  nome, a legenda diz o que fazer com ele. Trocar o formato sem trocar a legenda reproduz o defeito
+  que já aconteceu. Só vale a legenda do host se ele a passar (`legendas.candidatos`).
+- **Atenção:** com `nenhum`, ou com a legenda de `funcoesSugeridas`, a candidata só é achável pelo
+  índice, e o índice interno do orquestrador lista só `tools.conscious` (`CHANGELOG.md` 0.2.4).
