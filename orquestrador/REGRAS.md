@@ -58,7 +58,9 @@ de recalcular um conteúdo que nunca chegaria a renderizar de qualquer forma).
 
 `true` se o `read(ctx)` muda dentro da conversa, `false` se não muda. Declarar
 `false` é resposta; silêncio não é — `montarCatalogo` recusa a montagem e
-nomeia o `ref` que falta (`src/index.js`). Quando o discover é pulado por texto
+nomeia o `ref` que falta (`src/index.js`). **Exceção:** contribuição com `chaves`
+não declara `volatil` — ela é volátil por definição, e o valor declarado, se vier,
+é ignorado (`src/index.js:90`; `CHANGELOG.md` 0.2.5). Quando o discover é pulado por texto
 trivial, só o volátil é recalculado — o resto é reexibido como estava
 (`refsVolateisDeclaradas`, unida com `config.refsVolateis` no ponto de uso).
 
@@ -74,13 +76,14 @@ valor novo. Pode confiar nos dois sentidos, não só no de recalcular.
 Cada uma vale só para quem usa o mecanismo: sem `chaves` em nenhuma contribuição, nada disto
 roda e o host não muda (`CHANGELOG.md` 0.2.5; `src/chaves.js:60`). A montagem chama as três
 conferências em ordem — forma e nome, prioridade, refs semânticos (`src/index.js:1732`,
-`src/index.js:1741`, `src/index.js:1752`) — e recusa antes de o turno rodar. O ponto comum do
-porquê: **a contribuição por chave entra e sai no meio da sessão, e um erro de declaração só
-apareceria ali**, quando a chave entrasse (`src/chaves.js:48-52`).
+`src/index.js:1741`, `src/index.js:1752`) — e recusa antes de o turno rodar. O porquê de cada recusa está no item; o argumento "o erro só
+apareceria no meio da sessão, quando a chave entrasse" vale **só para a colisão de `priority`**:
+ela estoura no `acumular` quando os dois blocos têm conteúdo ao mesmo tempo, e com contribuição
+por chave isso acontece no meio da sessão (`src/chaves.js:48-52`).
 
 - **`chaves` só vale em contribuição de piso (`floor: true`).** Chave é o critério do piso; a
   contribuição `floor: false` já tem o dela, a relevância pelo canal de conversa
-  (`src/chaves.js:24`; `src/index.js:102-108`).
+  (`src/chaves.js:24`; `src/index.js:110-117`).
 - **`chaves: []` é recusado.** Lista vazia nunca bate (`some` sobre lista vazia dá falso:
   `src/chaves.js:8-12`), então a contribuição jamais entraria. Para "entra sempre", omita o campo
   (`src/chaves.js:25`).
@@ -94,7 +97,8 @@ apareceria ali**, quando a chave entrasse (`src/chaves.js:48-52`).
   Decimal vale (51.01, 51.02) (`src/chaves.js:49-85`).
 - **`priority` igual à do bloco de capacidades é recusada** no nível estável — o default
   (`prioridadeDasCapacidades`, padrão 50) é a posição das capacidades (`src/chaves.js:71-73`).
-- **Com `semanticaSemChave`, o ref derivado precisa ser válido.** `kind` string não vazia; ref
+- **Com `semanticaSemChave`, o ref derivado precisa ser válido.** Só para contribuição que tem
+  `chaves` **e** `semanticText` (as demais são puladas: `src/chaves.js:111`). `kind` string não vazia; ref
   `chave/<kind>/<origem>.<id>` com três segmentos, único entre si e sem colidir com os refs já
   ocupados no canal de conversa. O porquê: item de conversa com `ref` fora do formato é rejeitado
   **em silêncio** pelo kairos (só um rastro no explain), e o host acreditaria ter entregue conteúdo
@@ -254,6 +258,11 @@ impresso logo abaixo. **Mudou um, confira os três.**
 O card de capacidade candidata tem três formatos (`src/cartao-sugerido.js:6`): `completo` (padrão,
 o card de sempre), `funcoesSugeridas` e `nenhum`.
 
+- **Valor fora dos três é recusado.** `cartaoSugerido` diferente de `completo`, `funcoesSugeridas`
+  ou `nenhum` lança `cartaoSugerido inválido: "<valor>" (use …)` na montagem do orquestrador, antes
+  do turno (`src/cartao-sugerido.js:13-15`; chamada em `src/index.js:1387`). Ausente ou `null` vale
+  `completo`.
+
 - **`funcoesSugeridas`:** o card traz só os nomes das funções que o anel `tool` marcou para o
   turno (`full` ou `candidate`), da maior nota para a menor, **até 5**, **sem descrição**
   (`src/cartao-sugerido.js:7`, `src/cartao-sugerido.js:27-45`). Sem nenhuma entrada do anel `tool`
@@ -264,11 +273,12 @@ o card de sempre), `funcoesSugeridas` e `nenhum`.
 - **Por que existe (medido no Igris):** os cartões sugeridos eram 55–90% da mensagem do turno —
   14 a 27 mil caracteres por turno, nunca em cache — e o modelo não usou nenhum deles, enquanto os
   nomes das funções já estão no índice de capacidades (spec do Igris
-  `docs/superpowers/specs/2026-11-25-cartao-sugerido-e-uso-declarado-do-jev-design.md`, §1;
+  `docs/superpowers/specs/2026-11-25-cartao-sugerido-e-uso-declarado-do-jev-design.md`, §1, linha 15;
   auditoria do prompt no insight do Igris
   `docs/insights/2026-11-25-auditoria-do-prompt-duplicacoes-e-cartoes.md`, §2: 23,1 mil caracteres
   nos 8 cartões). O `CHANGELOG.md` 0.2.4 registra o formato, mas não cita o insight; a fonte dos
-  números é a spec e o comentário de `src/cartao-sugerido.js:1-4`.
+  números é a spec (o "14 a 27 mil caracteres" está na linha 15 dela); o comentário de
+  `src/cartao-sugerido.js:1-4` só traz o "55–90%".
 - **Por que a legenda acompanha o formato:** é a mesma regra do parágrafo acima — o card dá o
   nome, a legenda diz o que fazer com ele. Trocar o formato sem trocar a legenda reproduz o defeito
   que já aconteceu. Só vale a legenda do host se ele a passar (`legendas.candidatos`).

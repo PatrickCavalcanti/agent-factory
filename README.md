@@ -25,10 +25,12 @@ Sem registry: dependência git por semver (tag `vX.Y.Z` no repositório).
 ```json
 {
   "dependencies": {
-    "@okds/agent-factory": "git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^0.1.0"
+    "@okds/agent-factory": "git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^0.2.5"
   }
 }
 ```
+
+Em `0.x`, o `^` não atravessa minor (`^0.2.5` é `>=0.2.5 <0.3.0`); por isso cada host fixa a minor que usa.
 
 **O ponto depois de `github.com` é de propósito** (FQDN absoluto). Sem ele o resolver do pnpm trata
 o host como "hospedado" e sonda cada repositório uma vez por site de declaração; qualquer sonda

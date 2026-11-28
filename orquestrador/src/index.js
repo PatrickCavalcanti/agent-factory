@@ -2012,10 +2012,12 @@ export function criarOrquestrador(config) {
    * encadeado em cima. A Task 9 removeu o chamador de `aoDescobrir` (refino por anel do kairos
    * 0.833 não precisa de turno extra). A Task 10 (spec "decisor por anel: refinadores do kairos",
    * R10) removeu o chamador das FONTES: `carregar` das fontes entra no ESTADO do PRIMEIRO
-   * `prepareTurn` (`estadoKairosDoTurno`, em `executarTurno`), sem turno extra. O ÚNICO chamador
-   * restante é I3a (revisão final do conjunto): o provider dono de uma skill SUGERIDA sem estar
-   * carregado — a única promoção que só se descobre DEPOIS de ver o resultado do primeiro
-   * discover, porque depende do próprio `discover.skills.suggest`.
+   * `prepareTurn` (`estadoKairosDoTurno`, em `executarTurno`), sem turno extra. Restam DOIS
+   * chamadores, ambos promoções que só se descobrem DEPOIS de ver o primeiro discover: I3a
+   * (revisão final do conjunto) — o provider dono de uma skill SUGERIDA sem estar carregado,
+   * porque depende do próprio `discover.skills.suggest` — e o loop do Jev (`config.loop?.rodar`),
+   * que promove o que pediu carregar. Com o loop rodando, as duas se fundem numa chamada só (ver
+   * o comentário junto da chamada do I3a em `executarTurno`).
    *
    * @param {object} bridge
    * @param {object} manager

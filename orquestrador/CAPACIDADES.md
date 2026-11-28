@@ -341,7 +341,7 @@ A decisão do dono foi tornar isso determinístico, sem depender da nota (spec d
 **Por que mora na fábrica, e não no host.** O ponto de entrada é o estado do kairos antes do primeiro
 `prepareTurn`, e esse estado é da fábrica. Promover depois custaria um segundo `discover()`: era o que o
 antigo passo das fontes e o gancho `aoDescobrir` faziam, e a spec de refinadores (R10) removeu
-(`src/index.js:3140-3150`; §6.1).
+(`src/index.js:3149-3158`; §6.1).
 
 **Quando usar.** Quando o host conhece uma regra que não depende do que o ranking acha. O Igris usa para
 URL na mensagem; o chat do Dev Mode do Ariadne usa para `anexos` e `relatorio` (`carregarQuando` traduzido
@@ -373,7 +373,7 @@ cerca de 161 mil entraram sem nunca ser usadas (spec do Igris
   ele carregou por `load_capability` (`usadasDoTurno`, `src/despejo/costura.js:99-108`). Função recusada não
   conta (`usosDoTurno`, `src/despejo/registro-de-uso.js:8-20`; `CHANGELOG.md` 0.2.1). A execução do Jev não
   conta como uso do modelo; só vira uso se o modelo a **declarar** em `_contribuicoes_usadas` (linha
-  `idsDeclaradosNoTurno` em [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3; `src/despejo/comportamento.js:85-107`;
+  `idsDeclaradosNoTurno` em [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3; `src/despejo/comportamento.js:65-88`, `97-101`, `109-114`;
   `CHANGELOG.md` 0.2.4). Habilidade e memória sugeridas valem só no turno e sobem se o modelo as declarar
   (`despejo.comportamento`; `src/despejo/comportamento.js:1-60`).
 - **`fixa` e `acompanha` sobem junto.** Com a capacidade no system, as funções `fixa` dela sobem para o
@@ -381,9 +381,11 @@ cerca de 161 mil entraram sem nunca ser usadas (spec do Igris
   transitivo: a acompanhante da acompanhante não sobe. Nunca traz capacidade para o system: a fixa de uma
   capacidade que só está na cauda continua na cauda (`src/despejo/sobe-junto.js:1-8`).
 - **Capacidade ociosa sai inteira (`despejo.despejo`).** Capacidade do system sem uso há mais de `x`
-  mensagens (padrão 8) vira descartável e sai **em lote**, só quando a conta do cache compensa
+  mensagens (padrão 8) vira descartável e sai **em lote**, quando a conta do cache compensa
   (`r × D × H ≥ (w − r) × S`: o ganho de não pagar o texto parado contra o custo de reescrever o prefixo do
-  cache; `src/despejo/conta.js:1-38`; `src/despejo/registro-de-uso.js:60-79`). **Função não sai sozinha**:
+  cache) **ou, sem fazer a conta, quando a pausa desde a última chamada ao modelo chega a `pausaMin` minutos (motivo `pausa`; `src/index.js:4049`;
+  o cache provavelmente já esfriou) ou não há system anterior (motivo `sem-cache`)** (`src/despejo/conta.js:30-33`;
+  `src/despejo/conta.js:1-38`; `src/despejo/registro-de-uso.js:60-79`). **Função não sai sozinha**:
   enquanto a capacidade fica, nenhum manual dela é marcado, só a capacidade inteira ociosa
   (`src/despejo/registro-de-uso.js:60-64`). `sticky: true` e `sessionBehavior.evictAfterIdleTurns: null`
   impedem o despejo; um número em `evictAfterIdleTurns` troca o `x` daquela capacidade
