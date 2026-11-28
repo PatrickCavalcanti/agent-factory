@@ -3,6 +3,61 @@
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versões por tag `vX.Y.Z`,
 consumidas por `git+https://github.com./PatrickCavalcanti/agent-factory.git#semver:^X.Y.Z`.
 
+## [0.3.0] — 2026-11-27
+
+Peças que estavam coladas no Igris e as que o Ariadne precisa (índice, carga por chave, corte de função, fiação do
+decisor, teto do system, registro de casos). **Host que não declara os campos novos não muda: o turno é o da 0.2.5.**
+Cada campo é opt-in e nenhum lê `process.env`: o host lê o ambiente e entrega objeto. O porquê de cada campo está em
+[`orquestrador/ARCHITECTURE.md`](./orquestrador/ARCHITECTURE.md) §3.
+
+### Adicionado
+
+- **Índice de capacidades** (`config.indiceDeCapacidades`, `true` ou `{ cabecalho?, prioridade? }`): bloco
+  `<capability_index>` no system estável, uma linha por capacidade fora do piso com o nome exato de cada função (só a
+  primeira frase da `descricao`). Texto calculado uma vez, na montagem. Subpath novo
+  `@okds/agent-factory/indice-de-capacidades` (`renderizarIndiceDeCapacidades`, `cabecalhoDoIndice`,
+  `contribuicaoDoIndiceDeCapacidades`, `foraDoPisoComFuncao`).
+- **Carga por chave** (`config.cargaPorChave`, mapa `chave → [ids de capacidade]`): as capacidades das chaves do
+  turno entram carregadas, pelo mesmo caminho do `carregar` das fontes, sem depender do ranking. Exige `chaves` e
+  `catalogoDeChaves`. `aoMontar` e o retorno trazem `cargaPorChave`; o que a chave carregou não entra em
+  `promocoes.fontes`.
+- **Corte de função** (`config.corteDeFuncao`, `{ carregada?, semanticasDoPiso?, ativo? }`): a fábrica embrulha o
+  refinador do anel `tool`; `full` que não passa vira `candidate`. `carregada` corta manual novo em capacidade que já
+  estava no prompt; `semanticasDoPiso` corta as funções semânticas de capacidade que mistura piso e relevância. A
+  fábrica não exclui capacidade nenhuma por padrão (`carregada.excluir: []`): o host declara. O retorno e o
+  `aoMontar` trazem `corteDeFuncao` (as decisões do turno).
+- **Fiação do decisor e seleção local**, subpaths `@okds/agent-factory/decisoes/refinadores-do-turno`
+  (`refinadoresDoTurno`, `normalizarRefino`, `REFINO_PADRAO`, `comTardias`) e `@okds/agent-factory/decisoes/selecao`
+  (`criarSelecaoLocal`, `configDaSelecao`, `registrarCatalogoSemantico`, `serializarSelecao` e o estado por
+  `dataDir`). Portados do `refinadores.js` e do `selecao.js` do Igris com config por objeto, `dataDir`,
+  `limiaresDoModelo` e `embedder` por parâmetro.
+- **Teto por tamanho do system** (`config.tetoDoSystem: { chars }`): acima do teto, `renderErrors` ganha
+  `{ ref: 'teto-do-system', error }` e `aoEvento` recebe `{ tipo: 'fabrica:teto-do-system', turno, tamanho, teto }`.
+  É aviso: o turno completa.
+- **Registro de casos para treino** (`config.aoRegistrarCaso(caso, insumos)` e `config.dadosDoCaso(ctx)`): no fecho de
+  cada turno não trivial a fábrica monta o caso com `montarCaso` e o entrega ao gancho, sem aguardar. Erro síncrono vai
+  a `renderErrors`; rejeição tardia também sai por `aoEvento({ tipo: 'fabrica:registro-de-casos', erro })`.
+
+### Recusas novas de montagem (só para quem liga o campo)
+
+- **R9:** `indiceDeCapacidades` ligado sem nenhuma capacidade fora do piso com função.
+- **R10:** `cargaPorChave` com chave fora de `catalogoDeChaves`, id de capacidade desconhecido, lista vazia, mapa sem
+  `catalogoDeChaves` ou sem `chaves`.
+- **R11:** `corteDeFuncao` com valor fora do domínio (cabeça e cortes fora de 0..1, `z` ≤ 0, inteiros < 1, lista que
+  não é lista, `campo` desconhecido), campo vazio (sem `carregada` nem `semanticasDoPiso`), ou capacidade/função que
+  não existem em `config.capacidades`. Corte `0` explícito é aceito, como no Igris.
+- **Teto:** `tetoDoSystem` com `chars` que não é inteiro maior que 0.
+
+### Atenção
+
+- Host sem nenhum campo novo: turno igual ao da 0.2.5.
+- O evento do teto usa `.tipo` (a convenção dos diagnósticos da fábrica, ao lado de `fabrica:catalogo-mudo`), não
+  `.type`, que é dos eventos do genos. Quem ouve `aoEvento` e testa `.type` não vê este evento.
+- `normalizarCorte` lança em vez de avisar e seguir no padrão (o Igris avisava porque lia variável de ambiente).
+- `_limparSelecaoParaTestes` e `_memoDeDerivacoesParaTestes` (em `decisoes/selecao`) existem só para teste: o
+  snapshot do contrato as lista por serem exports, mas não dependa delas fora de teste.
+- Em `0.x` o `^` não atravessa minor: o host que estava em `^0.2.5` precisa trocar para `^0.3.0`.
+
 ## [0.2.5] — 2026-11-27
 
 Contribuição por chave. **Host que não declara chaves não muda.**

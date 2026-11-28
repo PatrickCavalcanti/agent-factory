@@ -43,6 +43,12 @@
   "./cache-exemplos": [
     "envolverEmbedderComDisco"
   ],
+  "./indice-de-capacidades": [
+    "cabecalhoDoIndice",
+    "contribuicaoDoIndiceDeCapacidades",
+    "foraDoPisoComFuncao",
+    "renderizarIndiceDeCapacidades"
+  ],
   "./protocolo": [
     "AVISO_PERTO_DO_TETO",
     "estrategiaEnvelope",
@@ -190,6 +196,21 @@
     "serializarCabeca",
     "treinarCabeca",
     "vetorValido"
+  ],
+  "./decisoes/selecao": [
+    "MEMO_MAX",
+    "SELECAO_PADRAO",
+    "_limparSelecaoParaTestes",
+    "_memoDeDerivacoesParaTestes",
+    "configDaSelecao",
+    "cortesDaBaseDoModelo",
+    "criarSelecaoLocal",
+    "indiceEmUso",
+    "invalidarSelecaoLocal",
+    "registrarCatalogoSemantico",
+    "registrarDecisao",
+    "registrarPromovidasNoTurno",
+    "serializarSelecao"
   ],
   "./decisoes/loop": [
     "ACAO_BLOQUEADO",
@@ -388,6 +409,12 @@
     "refinadorDeFuncoes",
     "refinadorDeHabilidades",
     "refinadoresDoChat"
+  ],
+  "./decisoes/refinadores-do-turno": [
+    "REFINO_PADRAO",
+    "comTardias",
+    "normalizarRefino",
+    "refinadoresDoTurno"
   ],
   "./decisoes/transporte": [
     "aquecer",
