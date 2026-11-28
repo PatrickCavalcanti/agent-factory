@@ -345,6 +345,78 @@ API sobe e as duas rotas respondem 503 (`unavailable`). **O 503 não cobre o `@i
 O erro leva `name: 'ErroDeTreino'` em vez de usar a classe porque o motivo pode ser,
 justamente, a classe não carregar; `responderErro` o identifica pelo nome. A rota passa `agora: agoraReal` ao serviço.
 
+## Fiação por turno — o decisor por anel e a seleção local (Task 2.4 do plano 2026-11-27)
+
+> **Subiu do Igris** (`packages/executor/src/orchestration/fabrica/refinadores.js` e `selecao.js`). Era cola do host com mecanismo
+> genérico: o que decide *como* o refino por anel do Kairos é montado a cada turno não depende do Igris, e o Ariadne usa o mesmo.
+> Portaram-se juntos os testes (`test/refinadores-do-turno.test.js`, `test/selecao.test.js`, com `dataDir` temporário e config por
+> objeto). Nada aqui lê `process.env` nem importa o Igris (`test/pureza.test.js` confere).
+
+Dois módulos, dois subpaths do `package.json`: `@okds/agent-factory/decisoes/refinadores-do-turno` e `@okds/agent-factory/decisoes/selecao`.
+
+### O que o host passa
+
+| Entrada | Quem a monta | Onde entra |
+|---|---|---|
+| Objeto de refino (`{ provider?, tool?, skill?, prazoMs?, aneisComJev?, … }`) | host: lê env/arquivo/painel e faz o `JSON.parse` | `normalizarRefino(obj)` (`src/refinadores/turno.js:194`) |
+| Cliente do Jev (`{ decidir }`), ou `null` sem gateway | host, **a cada turno** (o gateway pode ficar pronto no meio da sessão) | `refinadoresDoTurno({ cliente })` (`turno.js:372`) |
+| Getters do turno: `funcoesDe`, `capacidadesDePiso`, `conversaDoHost`, `consultasAnterioresDoHost` | host (lidos a cada chamada: só existem depois que o turno computa o histórico) | `refinadoresDoTurno` |
+| Ganchos de observação: `aoChegarTarde`, `aoChamarJev` | host (tracer/artefato do turno) | `refinadoresDoTurno` |
+| Objeto de seleção (`{ modos?, cortes?, funcaoTrazCapacidade?, minCasosCapacidade?, tetos?, atrasoSombraJevMs? }`) | host (idem, já lido) | `configDaSelecao(obj, { slug, limiaresDoModelo })` (`src/local/selecao.js:206`) |
+| `dataDir` (cabeças, retrato do índice, calibração mantida) | host: **onde ficam os dados é do host** | `criarSelecaoLocal({ dataDir })` (`selecao.js:576`) |
+| `limiaresDoModelo(slug)` → `{ decisorBase: { full, candidate } }` | host (no Igris, `@igris/embeddings/limiares`) | `criarSelecaoLocal` / `configDaSelecao` |
+| `embedder` (`{ modelSlug }` ou função que o devolve) | host (o embedder pode resolver depois da sessão nascer) | `criarSelecaoLocal` |
+
+**O que continua do host:** ler env vars e fazer `JSON.parse` (a fábrica recebe objeto), decidir onde moram os dados, construir o cliente
+do Jev e o embedder, e dizer quando o decisor está desligado (`ativo: false`).
+
+### O que cada função faz
+
+- **`REFINO_PADRAO`** (`turno.js:69`): os orçamentos do refino medidos no Igris — `prazoMs` 1600 (teto do Kairos, `refinerBudgetMs`),
+  `prazoGeralMs` 3600 (a rodada do turno inteira), `candidateProvidersForRefine` 8, `maxActivate` 2, e por anel `provider` 1500 /
+  `tool` 1100 / `skill` 1500 ms por cima de `PADRAO_PROVIDER`/`PADRAO_TOOL`/`PADRAO_SKILL`; `aneisComJev` = os três (modo combinado) e
+  `funcoesNaChamadaDeCapacidades: true` (o provider pergunta as funções das capacidades na mesma chamada; o tool lê do cache).
+  Invariante: `<anel>.prazoMs + 50 <= prazoMs` (o prazo do anel vence o timer do motor).
+- **`normalizarRefino(obj)`** (`turno.js:194`): completa o objeto do host por cima do padrão, **raso por anel**, e valida o formato
+  (cortes em [0,1], tetos inteiros ≥ 0, prazos > 0, `aneisComJev` só provider/tool/skill). `undefined` = sem config, sem aviso;
+  o que não é objeto, chave desconhecida ou valor fora da faixa avisa por `console.warn` e fica no padrão — **nunca lança**. Devolve
+  sempre uma cópia (mutar o resultado não corrompe `REFINO_PADRAO`). Era `configDeRefino(env)`.
+- **`refinadoresDoTurno({...})`** (`turno.js:372`): monta os refinadores (via `refinadoresDoChat`, `src/refinadores/index.js:71`) com o
+  cliente **do turno**. Cria o cache de respostas por turno (o provider grava as respostas das funções, o tool as lê) e **memoiza**
+  provider e skill por texto (o segundo `discover` do I3a não repergunta ao Jev). `tool` **não** memoiza: o universo de itens cresce
+  no turno, e item fora do que o refinador viu vira `discard`. Sem cliente devolve `{}` (o Kairos decide sozinho). Chamar uma vez por
+  turno: o cache nasce vazio e não vaza para o seguinte.
+- **`comTardias(refino, tardias)`** (`turno.js:434`): põe no `refino` do artefato a latência real (`msReal`) da resposta do Jev que
+  chegou depois do prazo; não cria anel que o Kairos não reportou e não muta a entrada.
+- **`configDaSelecao(obj, { slug, limiaresDoModelo })`** (`selecao.js:206`): padrão (`SELECAO_PADRAO`, `selecao.js:25`) + override do
+  host. Modos por anel: `jev`, `local`, `local+sombra-jev` (o local decide, o Jev roda em **sombra** depois de `atrasoSombraJevMs`,
+  500 ms, e só gera registro) e `jev+sombra-local`. Padrão: provider e tool `local+sombra-jev`, skill `jev+sombra-local`. Cortes por
+  origem (`cabeca`/`base`/`promocao`), `funcaoTrazCapacidade`, `minCasosCapacidade` e `tetos`. Aviso por motivo **uma vez por
+  processo**. Com `limiaresDoModelo`, `cortes.base` vira um getter lido por turno do slug (`slug` é função); sem ele vale a base fixa
+  de `CORTES_FIXOS` e a origem fica `fixo`. Override do dono vence a linha do modelo.
+- **`criarSelecaoLocal({ dataDir, config, limiaresDoModelo, embedder })`** (`selecao.js:576`): uma instância por **sessão**. Devolve
+  `{ modoDe(anel), refinadores({ jev, trace, ativo, refino }) }`; este monta, por anel, o refinador local (`criarRefinadorLocal`) e o
+  combina com o do Jev pelo modo (`refinadorPorModo`), acumulando em `trace` o que o local decidiu, as sombras e as promoções do
+  turno. Se `limiaresDoModelo` vier e a config ainda não resolveu a base, a instância a resolve com o slug do `embedder` (sem mutar a
+  config recebida).
+- **Estado de módulo por `dataDir`** (memo de derivações, cabeças, índice do catálogo): fica como no Igris. Funções que o host chama
+  de fora: `registrarCatalogoSemantico(dataDir, semantica)` (depois de cada `reindex` do Kairos: monta o índice do catálogo inteiro e
+  grava o retrato que o treino lê), `indiceEmUso(dataDir, anel)` (o que o treino por lote usa), `invalidarSelecaoLocal(dataDir, anel)`
+  (depois de gravar cabeça nova) e `serializarSelecao(trace)` (o que vai ao artefato do turno, sem o `explain` que inflava).
+
+### Por que subiu, e o que fica com o Ariadne
+
+Antes, o Ariadne teria de reescrever essa cola (prazos por anel, cache por turno, memoização, modos local/Jev/sombra, estado por
+`dataDir`) e as duas cópias divergiriam em silêncio — foi assim com os defaults dos anéis (Igris, Q3). Subindo o mecanismo, o host
+só entrega **configuração, cliente, embedder e diretório**. O Igris troca a cópia dele por esta; o Ariadne a consome direto.
+
+**Divergências em relação ao Igris** (comportamento igual fora estas): `configDeRefino(env)` → `normalizarRefino(obj)` e
+`configDaSelecao(env, …)` → `configDaSelecao(obj, …)` (sem env nem `JSON.parse`; `undefined` = padrão, objeto inválido avisa uma
+vez); `limiaresDoModelo` e o embedder por parâmetro (o slug padrão era `getEmbedderDoKairos()`); mensagens de aviso falam em
+"refino"/"seleção", não em nomes de env do Igris; `estadoDoPonteiro` vem de `treino/lib/versoes.js` por caminho relativo.
+O teste `fabrica-turno-selecao-padrao.test.js` do Igris prova o turno completo (`executarTurnoPelaFabrica`) e fica no Igris; o que ele
+cobre do mecanismo (modos padrão, sombra) está em `test/selecao.test.js`.
+
 ## Parâmetros que eram do Igris (0.1.0)
 
 Antes da extração estes valores estavam gravados no pacote (ou lidos de `process.env`). Agora são
