@@ -349,6 +349,43 @@ para `fonte`; insight do Ariadne, §2). Isto decide a **carga** da capacidade. P
 **dentro** dela, use `fixa` (§4); para o conteúdo de prompt por característica do trabalho, use as chaves
 de contribuição ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §3, `contribuicoes[].chaves`).
 
+### 9.1 Carga por chave (0.3.0)
+
+Isto vale para quem declara `catalogoDeChaves` (as chaves do trabalho, §3 de `ARCHITECTURE.md`) e quer que uma
+chave carregue capacidades. Sem `cargaPorChave`, nada muda.
+
+**O que é.** Um mapa `chave → [ids de capacidade]` na config do orquestrador. A cada turno, as capacidades das
+chaves do turno entram **carregadas**. O mapa usa a identidade das capacidades (o `id`) e **não** cria campo novo
+na capacidade: uma capacidade pode ser carregada por mais de uma chave, e uma chave por mais de uma capacidade, e
+a lista fica num lugar só, legível de uma vez.
+
+**Como carrega.** Pelo mesmo mecanismo do `carregar` da fonte (§9): os ids entram na união de
+`loadedProviders` do estado do kairos, **antes** do primeiro `prepareTurn` (`src/index.js`, junto de
+`promocoesDasFontes`). Não custa um segundo `discover()`. Fica pegajosa como o `carregar`: o que já está no
+prompt acumulado continua. No turno trivial a chave é calculada e publicada do mesmo jeito (as chaves não
+dependem do texto), mas, como o `carregar` das fontes, a capacidade só ganha manual no primeiro turno com
+`discover` de verdade — turno trivial não hidrata nada.
+
+**Por que existe.** O host sabe pelo trabalho o que é útil: numa tela com relatório o olho e o relatório
+importam; num pedido com anexos, os anexos. Nada disso deve depender de a frase do usuário casar com o texto
+semântico da capacidade. A chave é determinística; o ranking não é.
+
+**Rastro.** `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }`, o que cada
+chave do turno carregou (só com o campo configurado). É o "carregou pela chave X".
+
+**Chaves do turno.** Vêm de `chaves(ctx)`. Sem `chaves`, o turno tem **todas** as chaves do
+`catalogoDeChaves` (mesma regra das contribuições por chave) e o mapa inteiro carrega.
+
+**O que a fábrica recusa na montagem (R10, `REGRAS.md`).** Chave fora de `catalogoDeChaves`; id que não é de uma
+capacidade declarada; lista vazia ou que não é lista; mapa sem `catalogoDeChaves`. Todas as mensagens vêm juntas
+num só erro. O porquê: nome errado nunca bateria com o turno, e a capacidade ficaria sem carregar, sem erro nenhum.
+
+**Exemplo (Ariadne).** `cargaPorChave: { 'tela-mudada': ['olho'], migracao: ['migracao'] }`: um trabalho que
+muda tela já tem o olho carregado; um que mexe em cadastro com dados já tem a capacidade de migração.
+
+**Por que mora na fábrica.** O estado do kairos antes do primeiro `prepareTurn` é da fábrica (§9); promover de
+fora custaria o segundo `discover()`.
+
 ---
 
 ## 10. Cauda efêmera, uso e despejo
@@ -444,7 +481,7 @@ capacidades o custo é pequeno; com muitas, o índice é o preço de a descobert
 
 **O que isto não faz.** Não carrega capacidade nem manual — só anuncia. Não lista capacidade de piso
 (ela já aparece completa em `<capabilities>`). Não decide o que entra no turno: isso continua sendo do
-ranking, da carga por chave (§9.1, quando existir no host) e do decisor.
+ranking, da carga por chave (§9.1) e do decisor.
 
 **Por que mora na fábrica.** Era do Igris (spec `2026-10-19`) e ficou fora da extração por depender de
 coisas do Igris (`ORIGEM.md` D8). Dois hosts querem o mesmo bloco; o texto precisa casar com `nomeExposto`

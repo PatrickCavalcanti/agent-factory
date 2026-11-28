@@ -114,6 +114,12 @@ Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o 
   host acharia que a rede de segurança da descoberta existe sem ela existir. A recusa transforma
   esquecimento em erro de montagem. Ver `CAPACIDADES.md` §11.
 
+- **R10 — `cargaPorChave` inválida.** A montagem recusa, com todas as mensagens num só erro: chave fora
+  de `catalogoDeChaves`; id que não é de uma capacidade declarada; lista vazia ou que não é lista; mapa sem
+  `catalogoDeChaves` (`src/carga-por-chave.js`, chamado em `src/index.js` na montagem do catálogo). O
+  porquê: nome errado nunca bateria com as chaves do turno, e a capacidade ficaria sem carregar, sem erro
+  nenhum. Ver `CAPACIDADES.md` §9.1.
+
 ## Outras garantias do motor (não são recusa)
 
 ### Legenda do catálogo tem default

@@ -27,6 +27,7 @@ import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDo
 import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
 import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
+import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
 import { montarContextoDeMemorias } from './memoria-do-loop.js';
@@ -168,6 +169,14 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   do cabeçalho segue `cartaoSugerido`; `cabecalho` o substitui por inteiro; `prioridade` (default
  *   `prioridadeDasCapacidades - 0.5`, ou 49.5) é a posição no system e entra na validação de empate dos pisos.
  *   Recusa na montagem (R9) quando não há nenhuma capacidade `piso: false` com função. Ver CAPACIDADES.md §11.
+ * @property {Record<string, string[]>} [cargaPorChave] CARGA POR CHAVE (0.3.0): mapa `chave → [ids de capacidade]`. A
+ *   cada turno, as capacidades das chaves do turno (`chaves(ctx)`; sem `chaves`, todas as de `catalogoDeChaves`) entram
+ *   carregadas — mesmo mecanismo do `carregar` das fontes (promoção no estado do kairos antes do primeiro
+ *   `prepareTurn`), sem depender do ranking. É para o que o host sabe pelo trabalho (tela com relatório, pedido com
+ *   anexos) e não deve depender de a frase do usuário casar. Recusa na montagem (R10): chave fora de
+ *   `catalogoDeChaves`, id que não é de uma capacidade declarada, lista vazia, ou mapa sem `catalogoDeChaves`.
+ *   Com o campo, `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }` (o que cada
+ *   chave carregou neste turno). Ver CAPACIDADES.md §9.1.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -1575,6 +1584,18 @@ export function criarOrquestrador(config) {
           + 'tirá-la do ranking.',
         );
       }
+      // R10: a carga por chave é conferida na montagem — chave ou id errados ficariam, no turno, como "a chave
+      // não bateu" e a capacidade nunca seria carregada, sem erro nenhum.
+      const errosDaCarga = validarCargaPorChave(
+        config.cargaPorChave, config.catalogoDeChaves, new Set(config.capacidades.map((cap) => cap.id)),
+      );
+      if (errosDaCarga.length) {
+        throw new Error(
+          `cargaPorChave inválida: ${errosDaCarga.join('; ')}. A carga por chave só vale para chaves do `
+          + '`catalogoDeChaves` e ids de capacidades declaradas; um nome errado nunca bateria com o turno e a '
+          + 'capacidade ficaria sem carregar, sem erro nenhum.',
+        );
+      }
       // Gate de permissão por tool — chamado pelo kairos a cada discover
       // (rank/hydrate) e de novo aqui embaixo na ponte genos (`createGenosBridge`),
       // com a MESMA função: os dois precisam concordar, senão uma tool aparece
@@ -2657,10 +2678,12 @@ export function criarOrquestrador(config) {
     // contribuições com chave entram. A decisão de verdade mora no `read` registrado no catálogo
     // (mesmo critério, `contribuicaoBateComChaves`); aqui é o que o acumulador precisa saber —
     // quais retirar do prompt acumulado — e o que o `aoMontar` publica.
-    const chavesAtivas = Boolean(config.chaves) || comChave.length > 0;
+    const chavesAtivas = Boolean(config.chaves) || comChave.length > 0 || Boolean(config.cargaPorChave);
     const { chaves: chavesDesteTurno, erros: errosDeChaves } = chavesAtivas
       ? chavesDoTurnoMemo(ctx)
       : { chaves: [], erros: [] };
+    // Carga por chave: o que as chaves deste turno carregam (calculado uma vez; vira promoção mais abaixo).
+    const cargaDoTurno = config.cargaPorChave ? capacidadesDaCarga(config.cargaPorChave, chavesDesteTurno) : null;
     const refsComChaveQueEntraram = comChave
       .filter((c) => contribuicaoBateComChaves(c, chavesDesteTurno)).map((c) => c.ref);
     const refsComChaveQueFicaram = comChave
@@ -3201,6 +3224,10 @@ export function criarOrquestrador(config) {
     // (turno anterior) continua carregado sem a fonte pedir de novo — é `[...new Set(...)]`
     // (não há `dedupe` exportado neste arquivo; mesmo idioma usado em todo o resto do pacote,
     // ex.: `comCarregadasNoTurno` acima) sobre a UNIÃO dos dois.
+    // Carga por chave (0.3.0): as capacidades das chaves do turno entram como as do `carregar` das fontes —
+    // na MESMA união, antes do primeiro `prepareTurn`, então valem inclusive no turno trivial (as chaves não
+    // dependem do texto). `cargaPorChave` foi conferida na montagem: todo id é de capacidade declarada.
+    for (const id of cargaDoTurno?.ids ?? []) promocoesDasFontes.add(id);
     const estadoKairosDoTurno = promocoesDasFontes.size
       ? { ...estadoAnterior.kairos, loadedProviders: [...new Set([...estadoAnterior.kairos.loadedProviders, ...promocoesDasFontes])] }
       : estadoAnterior.kairos;
@@ -4190,6 +4217,8 @@ export function criarOrquestrador(config) {
         ...(chavesAtivas
           ? { chaves: { doTurno: chavesDesteTurno, entraram: refsComChaveQueEntraram, ficaram: refsComChaveQueFicaram } }
           : {}),
+        // Carga por chave: o que cada chave do turno carregou (só com `config.cargaPorChave`).
+        ...(cargaDoTurno ? { cargaPorChave: cargaDoTurno.porChave } : {}),
         discover: prepared.discoverResult,
         // `embeds` (Task 11, spec F1; `'trivial'` desde o I1 da revisão final / kairos 0.832):
         // quantos embeds de CONSULTA a fábrica fez ela mesma neste turno (0 quando o host mandou
@@ -4699,6 +4728,8 @@ export function criarOrquestrador(config) {
       return {
         resultado,
         texto,
+        // Carga por chave: o que cada chave do turno carregou (só com `config.cargaPorChave`).
+        ...(cargaDoTurno ? { cargaPorChave: cargaDoTurno.porChave } : {}),
         // A-I6: `true` quando o laço estourou `maxIteracoes` e o turno foi concluído por
         // aterrissagem suave (`aviso` = o texto a mostrar). Sem `aviso` quando não estourou.
         tetoAtingido,
