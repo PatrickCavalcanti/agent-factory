@@ -247,6 +247,8 @@ saída de emergência não pode ser bloqueada por ela mesma.
 
 ### 6.1 Decisor externo (`aoDescobrir`)
 
+> **Histórico:** substituído pelos refinadores em 2026-09-20; passar `aoDescobrir` hoje lança `TypeError` (`src/index.js`, recusa no início de `criarOrquestrador`). O texto abaixo descreve o gancho como era e fica por registro; o mecanismo vigente é `config.refinadores` ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §3 e §5).
+
 `config.aoDescobrir` é um gancho OPCIONAL entre o discover do kairos e a
 montagem do prompt (chamado uma vez por turno, nunca em `unchanged`). Ele só
 **amplia** o que o kairos já decidiu — nunca chama tool, nunca tira nada:
@@ -300,3 +302,108 @@ Antes de dar uma capacidade por pronta:
 - [ ] Nenhum nome de tool foi para o **prompt base** (regra 5 do `REGRAS.md`) —
       exceto catálogo fechado, onde tudo é piso.
 - [ ] Rodou na bancada (`src/fabrica/bancada/`) e olhou o prompt montado?
+
+---
+
+## 9. Fonte: carga determinística
+
+Uma **fonte** é um campo opcional da capacidade (`fonte: FonteDeclarada`, [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3).
+O que interessa aqui é `fonte.selecionar`: uma função da própria capacidade que olha o turno e diz,
+**por regra e sem ranking**, que outras capacidades têm de estar carregadas.
+
+**Como funciona.**
+
+1. A fábrica chama `fonte.selecionar(ctx, { vetor1, embedar, capacidadesCarregadas })` de cada capacidade
+   com fonte, em paralelo, com prazo próprio (`prazoDaFonteMs`, 800 ms; fonte lenta ou que lança entra sem
+   seleção e nunca derruba o turno) (`src/index.js:2860-2870`; JSDoc de `prazoDaFonteMs`, `src/index.js:441-446`).
+2. A função devolve uma `Selecao`. O campo `carregar` é uma lista de **ids de capacidade**.
+3. A fábrica junta os ids conhecidos (id desconhecido não promove e sai em `renderErrors`:
+   `src/index.js:2931-2940`) e os põe em `loadedProviders` do **estado do kairos**, antes do primeiro
+   `prepareTurn` do turno (`src/index.js:3163-3165`; a chamada está em `src/index.js:3198-3202`). Não há
+   segundo `prepareTurn` por causa disso: o id em `loadedProviders` é hidratado (índice e instruções) no mesmo
+   `discover()`, como um provider carregado num turno anterior (`src/index.js:3151-3158`).
+
+**O que chega com a capacidade.** Carregar a capacidade traz as funções `fixa` dela — o mínimo, que chega
+com manual (§4; `ARCHITECTURE.md` §4: `pinned` hidrata sempre que o provider carrega). O resto das funções
+o anel `tool` decide pela nota de cada uma (insight do Ariadne
+`docs/insights/2026-11-27-fabrica-desenho-e-o-ariadne.md`, §1, linha "Carga determinística"). Por isso
+`fixa` importa tanto aqui quanto no piso.
+
+**Exemplo real (Igris): a capacidade de pesquisa web carrega quando a mensagem tem URL.** A fonte do poder
+`pesquisa-web` (`packages/powers/src/powers/pesquisa-web/fonte.js`, função `pedeConsultaWeb`) devolve
+`carregar: ['pesquisa-web']` quando a mensagem tem URL, domínio, ou menção a consulta na internet;
+"link" sozinho, sem URL, não dispara. **Por que existe:** na sessão `c753f79b` o pedido trazia duas URLs
+e `pesquisa-web` ficou fora até de candidata (nota local 0,110, corte 0,15); numa varredura de outubro,
+"abre https://… e me fala…" teve a capacidade descartada a 0,086 — o ranking não lê URL como pedido de web.
+A decisão do dono foi tornar isso determinístico, sem depender da nota (spec do Igris
+`docs/superpowers/specs/2026-10-19-indice-de-capacidades-e-gatilho-web-design.md`, §1 e decisão 2).
+
+**Por que mora na fábrica, e não no host.** O ponto de entrada é o estado do kairos antes do primeiro
+`prepareTurn`, e esse estado é da fábrica. Promover depois custaria um segundo `discover()`: era o que o
+antigo passo das fontes e o gancho `aoDescobrir` faziam, e a spec de refinadores (R10) removeu
+(`src/index.js:3140-3150`; §6.1).
+
+**Quando usar.** Quando o host conhece uma regra que não depende do que o ranking acha. O Igris usa para
+URL na mensagem; o chat do Dev Mode do Ariadne usa para `anexos` e `relatorio` (`carregarQuando` traduzido
+para `fonte`; insight do Ariadne, §2). Isto decide a **carga** da capacidade. Para o que o modelo vê
+**dentro** dela, use `fixa` (§4); para o conteúdo de prompt por característica do trabalho, use as chaves
+de contribuição ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §3, `contribuicoes[].chaves`).
+
+---
+
+## 10. Cauda efêmera, uso e despejo
+
+Isto vale para quem **declara capacidades semânticas** (`piso: false`) e liga `despejo.cauda` e/ou
+`despejo.despejo` (os dois desligados por padrão; defaults em `src/despejo/config.js`, tabela em
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §3). Desligado, o turno é byte a byte o de antes (`src/index.js:17-18`).
+
+**O problema.** O system é append-only: capacidade ou manual que entra não sai mais, usado ou não. O Igris
+mediu o efeito numa sessão: 9 capacidades viraram 20, o system foi de 169 mil para 386 mil caracteres e
+cerca de 161 mil entraram sem nunca ser usadas (spec do Igris
+`docs/superpowers/specs/2026-10-29-cauda-efemera-e-despejo-de-capacidades-design.md`, §1).
+
+**O que a fábrica faz.**
+
+- **Cauda efêmera (`despejo.cauda`).** O que a seleção trouxe e o modelo ainda não usou vai para a
+  **mensagem do turno** (a cauda), não para o system. O system só recebe o que já estava nele, o piso e o
+  promovido (`src/despejo/cauda.js:1-2`, `separarCauda`). A legenda diz ao modelo que as funções da cauda
+  podem ser chamadas agora; as que ele usar passam a ficar no contexto fixo e as que não usar saem em breve
+  (`LEGENDA_CAUDA_PADRAO`, `src/despejo/cauda.js:7`).
+- **Só o que o modelo usou sobe ao system.** Uso = função que o **modelo executou** com sucesso, mais o que
+  ele carregou por `load_capability` (`usadasDoTurno`, `src/despejo/costura.js:99-108`). Função recusada não
+  conta (`usosDoTurno`, `src/despejo/registro-de-uso.js:8-20`; `CHANGELOG.md` 0.2.1). A execução do Jev não
+  conta como uso do modelo; só vira uso se o modelo a **declarar** em `_contribuicoes_usadas` (linha
+  `idsDeclaradosNoTurno` em [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3; `src/despejo/comportamento.js:85-107`;
+  `CHANGELOG.md` 0.2.4). Habilidade e memória sugeridas valem só no turno e sobem se o modelo as declarar
+  (`despejo.comportamento`; `src/despejo/comportamento.js:1-60`).
+- **`fixa` e `acompanha` sobem junto.** Com a capacidade no system, as funções `fixa` dela sobem para o
+  system, e as `acompanha` de uma função promovida (usada ou carregada) ou fixa sobem com ela. Não é
+  transitivo: a acompanhante da acompanhante não sobe. Nunca traz capacidade para o system: a fixa de uma
+  capacidade que só está na cauda continua na cauda (`src/despejo/sobe-junto.js:1-8`).
+- **Capacidade ociosa sai inteira (`despejo.despejo`).** Capacidade do system sem uso há mais de `x`
+  mensagens (padrão 8) vira descartável e sai **em lote**, só quando a conta do cache compensa
+  (`r × D × H ≥ (w − r) × S`: o ganho de não pagar o texto parado contra o custo de reescrever o prefixo do
+  cache; `src/despejo/conta.js:1-38`; `src/despejo/registro-de-uso.js:60-79`). **Função não sai sozinha**:
+  enquanto a capacidade fica, nenhum manual dela é marcado, só a capacidade inteira ociosa
+  (`src/despejo/registro-de-uso.js:60-64`). `sticky: true` e `sessionBehavior.evictAfterIdleTurns: null`
+  impedem o despejo; um número em `evictAfterIdleTurns` troca o `x` daquela capacidade
+  (`src/index.js:4019-4026`).
+- **Piso nunca sai** (`src/despejo/registro-de-uso.js:60-64`; `src/index.js:1410-1411`).
+- **O que saiu é avisado, e a volta exige convicção.** O aviso `<descartadas>` lista só o que já foi usado e
+  manda carregar de volta com `load_capability` (`src/despejo/aviso.js`). Capacidade descartada, ou que
+  passou `m` mensagens (padrão 2) na cauda sem uso, só volta à cauda com **sinal forte** da seleção:
+  confiança do refinador ≥ 0,4 ou z ≥ 2,5 (`src/despejo/registro-de-uso.js:99-106`;
+  `src/despejo/costura.js:24-35`; `src/despejo/config.js:16`). O que o loop do Jev trouxe neste turno nunca é
+  despejado nele (`protecaoDoDespejo`, `src/despejo/costura.js:50-69`).
+- **Continuação curta.** A cauda do turno anterior vale por mais um turno quando este é continuação dele
+  ("posso enviar?" → "sim"): turno trivial, veto de trivial por continuidade do host, ou pista de contexto
+  aplicada (`ehContinuacaoCurta`, `src/despejo/costura.js:78-87`).
+
+**Por que mora na fábrica.** O acumulador do prompt, o estado do kairos e a medição do cache são daqui; a
+decisão de "o que sai do system" e "o que o cache perde" usa os três ao mesmo tempo
+(`src/index.js:4019-4066`). O host entrega só as medidas do cache (`entrada.medidasDoCache`: modelo, chamadas
+por mensagem, razão tokens/caractere, última chamada; `src/index.js:4039-4051`).
+
+**O que isto não faz.** Não tira piso, não tira função isolada e não age com os interruptores desligados. Os
+números (`x`, `m`…) foram calibrados numa simulação do Igris em 29/10; a spec original dizia 5 e 3
+(`src/despejo/config.js:6-7`). Recalibrar para outro host é trabalho do host.

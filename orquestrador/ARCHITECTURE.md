@@ -1,29 +1,48 @@
-# ARCHITECTURE — @igris/orchestrator
+# ARCHITECTURE — orquestrador (`@okds/agent-factory`)
 
-> **Copiado de `igris@430d2c9`; o texto ainda descreve o Igris como host de referência.** Links para `docs/`, `packages/executor` e `packages/powers` apontam para o GitHub do Igris no sha de origem; ver [`ORIGEM.md`](../ORIGEM.md).
-
-> Ver [`../../docs/ok-playbook/patterns/code-design.md §9`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/ok-playbook/patterns/code-design.md) para a
-> regra completa de `ARCHITECTURE.md` por unidade modular. Spec de origem:
-> [`docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md).
-> Pendências da execução (leia antes de mexer nesta área):
-> [`docs/pendencias/2026-09-10-fabrica-de-orquestradores.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/pendencias/2026-09-10-fabrica-de-orquestradores.md).
+> **Este é o documento de estado da fábrica.** Diz o que ela é hoje, o que cada campo de configuração
+> faz e por que ele existe. Quem lê (Igris, Ariadne ou quem chegar) deve sair sabendo o que existe e
+> o motivo. Atualize-o no mesmo commit que mudar a estrutura interna ou a `ConfigDoOrquestrador`.
 >
-> Este doc nasce com o pacote e evolui junto com o código. Atualize-o no mesmo commit que mudar a
-> estrutura interna.
+> De onde o código veio: [`../ORIGEM.md`](../ORIGEM.md). Os links deste texto que apontam para o
+> Igris (`igris@430d2c9`: `docs/`, `packages/executor`, `packages/powers`) são **referência histórica**
+> do que a cópia descrevia; o Igris segue mudando.
 
 ## Propósito
 
-`criarOrquestrador(config)` é a fábrica de orquestradores de LLM do Igris: liga quatro peças que
-existiam soltas em três lugares diferentes (Ariadne, shadows, executor) em um único ciclo de turno —
-decidir quais capacidades importam, montar o prompt sem quebrar cache, expressar a chamada de tool
-num protocolo que o runtime sabe ler, e rodar o loop. Hoje serve dois consumidores atrás de env var:
-shadows de código `mode:'loop'` (`IGRIS_SHADOW_FABRICA=1`, em
-`packages/shadows/src/runner/in-process.js:378`) e agentes de banco `motor:'llm'`
-(`IGRIS_AGENTE_FABRICA=1`, em `packages/powers/src/powers/async-shadows/agents/motor-llm.js:418`),
-os dois com o caminho legado vivo ao lado até a Fase 7 remover a chave. Desde 2026-09-19 há um
-terceiro consumidor: o executor de chat, atrás de `IGRIS_CHAT_FABRICA=1`
-(`packages/executor/src/orchestration/fabrica/turno.js`), em primeira versão reduzida — ver §5,
-"Estado em 2026-09-19".
+`criarOrquestrador(config)` é a fábrica de orquestradores de LLM. Ela liga quatro peças que
+existiam soltas — o ranking de capacidades (kairos), o montador de prompt, o protocolo de chamada de
+função e o loop do genos — num único ciclo de turno: decidir quais capacidades importam, montar o
+prompt sem quebrar cache, expressar a chamada de função num protocolo que o runtime sabe ler e rodar
+o loop. O pacote é `@okds/agent-factory`, versão **0.2.5** (`package.json`).
+
+Dois hosts usam a fábrica hoje (insight do Ariadne `docs/insights/2026-11-27-fabrica-desenho-e-o-ariadne.md`, §2):
+
+| Host | O que roda na fábrica | Versão da fábrica |
+|---|---|---|
+| Igris | o chat e os agentes de fundo (shadow e agente de banco) | ainda na 0.1.x |
+| Ariadne | o chat do Dev Mode e os jobs da Pipeline V2 | 0.2.5 |
+
+**Por que a linha 0.2.x tem campos que o Igris não usa.** Tudo que a 0.2.x acrescentou é opt-in:
+sem o campo, o turno é byte a byte o de antes (`mecanicaNoCatalogo`, 0.2.0: "o Igris não muda";
+chaves, 0.2.5: "host que não declara chaves não muda"; `CHANGELOG.md`). A 0.2.4 levou à linha 0.2.x
+o cartão sugerido e o uso declarado que nasceram na 0.1.1 (`CHANGELOG.md`, 0.2.4).
+
+**Histórico (cópia de 2026-10-31, `igris@430d2c9`).** Na época da cópia a fábrica servia dois
+consumidores do Igris atrás de variável de ambiente — shadows de código `mode:'loop'`
+(`IGRIS_SHADOW_FABRICA=1`, `packages/shadows/src/runner/in-process.js:378`) e agentes de banco
+`motor:'llm'` (`IGRIS_AGENTE_FABRICA=1`, `packages/powers/src/powers/async-shadows/agents/motor-llm.js:418`),
+com o caminho legado vivo ao lado — e, desde 2026-09-19, o executor de chat atrás de
+`IGRIS_CHAT_FABRICA=1` (`packages/executor/src/orchestration/fabrica/turno.js`), em primeira versão
+reduzida (ver §5, "Estado em 2026-09-19"). As seções abaixo preservam esse texto onde ele ainda
+explica o desenho.
+
+Regra completa de `ARCHITECTURE.md` por unidade modular:
+[`docs/ok-playbook/patterns/code-design.md §9`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/ok-playbook/patterns/code-design.md).
+Spec de origem da fábrica no Igris:
+[`docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/superpowers/specs/done/2026-09-10-fabrica-de-orquestradores-design.md);
+pendências da execução original:
+[`docs/pendencias/2026-09-10-fabrica-de-orquestradores.md`](https://github.com/PatrickCavalcanti/igris/blob/430d2c9/docs/pendencias/2026-09-10-fabrica-de-orquestradores.md).
 
 ## 1. As quatro peças, e por que são separadas
 
@@ -127,6 +146,18 @@ em primeiro lugar.
 | `refinadores` | não | — | **Substitui `aoDescobrir` desde 2026-09-20** (spec `2026-09-20-decisor-por-anel-refinadores-do-kairos-design.md`, R1). `Partial<Record<'provider'\|'tool'\|'skill'\|'source'\|'conversation', RingRefiner>>` — repassado DIRETO para `createManager({ refiners: config.refinadores })` do kairos 0.833; a fábrica não interpreta o contrato, só transporta o que `@igris/decisions/refinadores` monta (`refinadoresDoChat`). O refino roda DENTRO do `discover()`, sem segundo `prepareTurn`. Sem `refinadores`, saída idêntica à de antes do refino (R1: 0.833 sem `refiners` = 0.832 byte a byte). |
 | `refino` | não | `{}` | `{ prazoMs?, prazoGeralMs?, candidateProvidersForRefine?, maxActivate? }` — orçamentos/tetos do refino (R4/R6), repassados a `createManager({ refinerBudgetMs: refino.prazoMs, refinersBudgetMs: refino.prazoGeralMs, tool: { candidateProvidersForRefine }, skills: { maxActivate } })`. Sem efeito se `config.refinadores` estiver ausente. |
 | `aoSemear(ids, ctx)` | não | — | Skills a semear na memória de trabalho — duas origens no MESMO turno: `Selecao.semear` das fontes (§5, "Atualização 2026-09-20") e, desde a spec "decisor por anel", skills que o refinador do anel `skill` marcou `full` (`skills.activation: 'host'`, sempre ligado). Devolve `Promise<Array<{id, nome?, corpo?}>|void>` — o corpo de cada skill semeada, que a fábrica injeta como bloco `turn:context` efêmero neste turno. Ligado no chat a `semearNaMemoriaDeTrabalho` (`orchestration/fabrica/turno.js`), que chama `habilidades__hab_carregar` de verdade. **`aoDescobrir`/`prazoDoDecisorMs`/`tetoDoDecisor` foram REMOVIDOS de `ConfigDoOrquestrador`** — passar qualquer um dos três hoje lança `TypeError` (Task 9 da mesma spec). O arquivo `orchestration/fabrica/decisor.js` (`criarDecisorDoChat`) que os usava foi substituído por `orchestration/fabrica/refinadores.js`. |
+| `contribuicoes[].chaves` (0.2.5) | não | — (sem o campo a contribuição é **base**: entra sempre) | **O que é:** só em contribuição de piso (`floor: true`). Ela entra no prompt só quando o turno traz uma das chaves; é volátil por definição (dispensa `volatil`), é relida a cada turno — inclusive no turno trivial — e sai do prompt acumulado quando a chave sai do turno (`index.js:110-117`, `CHANGELOG.md` 0.2.5). **Por que existe:** o prompt do Ariadne só crescia — a regra de gráfico, de aviso ou de convite chegava a quem só mexia num cadastro simples (spec do Ariadne `docs/superpowers/specs/2026-11-27-contribuicoes-por-chave-design.md`). Escolher pelo ranking não serve aqui: o host sabe pelo trabalho do turno o que importa, então a escolha é determinística (`chaves.js:1-2`). **Por que mora na fábrica:** o que está no prompt acumulado, e o que sai dele, é decisão do acumulador do prompt (`prompt-builder.js`, append-only), que é desta fábrica. **Opt-in:** o host que não declara chaves não muda. Com chaves, `aoMontar` publica `chaves: { doTurno, entraram, ficaram }` (`index.js:4150`). Atenção: pôr `chaves` numa contribuição que era `volatil: false` a move para a parte volátil do system e muda o prefixo de cache (`CHANGELOG.md` 0.2.5). |
+| `chaves(ctx)` (0.2.5) | não | sem a função, o turno tem **todas** as chaves (as de `catalogoDeChaves` ou, sem catálogo, as declaradas nas contribuições) | **O que é:** devolve as chaves do trabalho deste turno, lida a cada `executarTurno` e memoizada pelo objeto `ctx` (`index.js:118-126`, `index.js:739-747`). Se lançar, o turno segue só com a base e o erro vai para `renderErrors`. **Por que existe:** o orquestrador é um por processo; o que muda por pedido chega pelo `ctx`. **Por que o padrão é "todas":** ligar `chaves` nas contribuições nunca muda um host que não passa a função (`index.js:123-124`). |
+| `catalogoDeChaves` (0.2.5) | não | — (sem catálogo os nomes não são conferidos) | **O que é:** lista de nomes de chave válidos. Chave de contribuição fora dela é **recusa de montagem**; chave do turno fora dela é ignorada e registrada em `renderErrors` (`CHANGELOG.md` 0.2.5; `chaves.js:19-29`). **Por que existe:** uma chave que nenhum turno traz nunca bate (`chaves.js:8-12`) — a contribuição ficaria fora do prompt sem erro nenhum. O catálogo faz o erro de nome aparecer na montagem. |
+| `semanticaSemChave` (0.2.5) | não | `false` | **O que é:** contribuição com chave que **não bateu** neste turno e declara `semanticText` vira item do canal de conversa do kairos (ref `chave/<kind>/<origem>.<id>`); ainda pode entrar se a conversa pedir o assunto, pelo ranking semântico (`index.js:129-132`). **Por que existe:** a chave é determinística, então só vale o que o host declarou; este é o caminho opcional para a conversa trazer uma contribuição cuja chave o trabalho não tinha. Exige `kind` não vazio e ref derivado único (recusa de montagem; ver `REGRAS.md`). |
+| `limiaresDeConversa` (0.2.5) | não | defaults do kairos | **O que é:** `{ include, candidate }` — os cortes (`threshold`/`candidateThreshold`) do canal de conversa do kairos neste turno (`index.js:133-134`). É o canal por onde entram as contribuições `floor: false`, os itens de `conversa()` e a `semanticaSemChave` (`index.js:58-65`, `index.js:129-132`). **Por que existe:** deixa o host calibrar o corte desse canal em vez de ficar preso ao default do kairos. A motivação da calibração em si não está registrada neste repositório. |
+| `cartaoSugerido` (0.2.4) | não | `'completo'` | **O que é:** formato do card de capacidade **candidata** (não carregada) na mensagem do turno: `completo` (o card de sempre, todas as funções com descrição); `funcoesSugeridas` (só os nomes das funções que o anel `tool` marcou para o turno, até 5, pela nota — `cartao-sugerido.js:6-8`, `cartao-sugerido.js:27-45`); `nenhum` (sem card, o modelo usa o índice). A legenda de `candidatos` acompanha o formato, salvo se o host passar a sua (`cartao-sugerido.js:57-65`). Card de capacidade já carregada que volta com a cauda fica sempre completo (`CHANGELOG.md` 0.2.4). **Por que existe:** medido no Igris, os cartões sugeridos eram 55–90% da mensagem do turno — 14 a 27 mil caracteres, nunca em cache — e o modelo não usou nenhum deles (spec do Igris `docs/superpowers/specs/2026-11-25-cartao-sugerido-e-uso-declarado-do-jev-design.md`, §1; números também em `cartao-sugerido.js:1-4`). **Por que mora na fábrica:** quem monta o card (`cardsComFuncoes`) e a legenda é o orquestrador. Atenção: com `nenhum` (ou com a legenda de `funcoesSugeridas`) a candidata só é achável pelo índice, e o índice interno lista só `tools.conscious`; o Igris tem índice próprio com todas as capacidades (`CHANGELOG.md` 0.2.4). |
+| `idsDeclaradosNoTurno(ctx)` e o uso declarado `_contribuicoes_usadas` (0.2.4) | não | ausente = nenhuma declaração | **O que é:** o modelo declara no campo `_contribuicoes_usadas` do envelope o que usou (habilidade, memória ou função); `idsDeclaradosNoTurno` devolve esses ids, sem filtrar pela oferta, e a fábrica os lê no fecho do turno (`index.js:495-498`). Consulta que o **loop do Jev** executou entra na oferta como tipo `funcao`; oferecida **e** declarada pelo modelo, conta como uso e sobe para o contexto fixo (`despejo/comportamento.js:85-107`, `CHANGELOG.md` 0.2.4). Turno cancelado não promove. **Por que existe:** a execução do Jev **não** conta como uso do modelo (`despejo/registro-de-uso.js:9-20`, `op.origem`); sem a declaração, uma função que só o Jev consultou seria tratada como ociosa. **Por que mora na fábrica:** o registro de uso e o fecho do despejo são daqui. Só vale com `despejo.comportamento` ligado e fora do `headless` (o schema headless não tem o campo: `index.js:2839-2841`). |
+| `despejo` (cauda efêmera e despejo) | não | tudo desligado (`DESPEJO_PADRAO`, `despejo/config.js:2-18`) | **O que é:** objeto com três interruptores e os números da conta. `cauda` (padrão `false`): o que a seleção traz vai para a **mensagem do turno**, e o system só recebe o que o modelo usou. `despejo` (padrão `false`): capacidade do system sem uso sai, em lote, quando a conta do cache compensa. `comportamento` (padrão `false`): seleção pelo comportamento — habilidade e memória valem só no turno até o modelo declarar. Números: `x: 8` (mensagens sem uso até virar descartável; a spec dizia 5, calibrado em 29/10), `m: 2` (mensagens seguidas na cauda sem uso até exigir sinal forte; a spec dizia 3), `n: 5`, `k: 5`, `pausaMin: 20`, `r: 0.1`, `w: 1.0`, `razaoPadrao: 0.25`, `tetoAvisoChars: 1200`, `dezMais: 10`, `sinalForte: { cabeca: 0.4, z: 2.5 }`, `porModelo: {}` (override de `r`/`w`). Valor inválido volta ao padrão com um `console.warn`; nunca lança (`despejo/config.js:1`, `index.js:1405-1409`). **Por que existe:** o system era append-only — capacidade ou manual que entrava não saía mais, usado ou não. Na sessão `c70023ef` do Igris, 9 capacidades viraram 20 e o system foi de 169 mil para 386 mil caracteres; cerca de 161 mil caracteres entraram e nunca foram usados (spec do Igris `docs/superpowers/specs/2026-10-29-cauda-efemera-e-despejo-de-capacidades-design.md`, §1). **Por que mora na fábrica:** o acumulador do prompt e a decisão de cache são daqui. Detalhe do mecanismo: [`CAPACIDADES.md`](./CAPACIDADES.md) §10. Desligado, o turno é byte a byte o de antes (`index.js:17-18`). ⚠️ O campo `despejo` não tem `@property` próprio no JSDoc de `ConfigDoOrquestrador`; o contrato está em `despejo/config.js` e na criação do orquestrador (`index.js:1405-1409`). |
+| `prazoDaFonteMs` | não | `800` | **O que é:** prazo de `fonte.selecionar` de **cada** capacidade com fonte, em paralelo (um prazo por fonte, não um total). Fonte que estoura o prazo ou lança entra sem seleção neste turno; `fontes[].degradado` registra `'prazo'` ou `'erro: …'` (`index.js:441-446`). **Por que existe:** uma fonte lenta não pode derrubar nem atrasar o turno inteiro. |
+| `separarSystemVolatil` (0.2.2) | não | `false` | **O que é:** o system sai em **duas** mensagens `developer` — `id: 'sys'` (tudo até antes da primeira seção volátil) e `id: 'sys-volatil'` (dali em diante); as duas juntas, com dois LF, dão exatamente os bytes do `system` (`index.js:167-173`, `CHANGELOG.md` 0.2.2). **Por que existe:** para o cache de prompt **entre execuções** — com o system num bloco só, a marca de cache do provider ficava depois de um final que muda a cada job (worktree, tentativa, mensagem), e o prefixo igual dos jobs nunca era reaproveitado. Com a fronteira, o host marca o primeiro bloco (`CHANGELOG.md` 0.2.2). Sem seção volátil, ou com a volátil abrindo o system, sai uma mensagem só. |
+| `pisoCompletoNoTurnoTrivial` | não | `false` | **O que é:** no turno trivial (`unchanged`), o piso entra com a descrição (`<provider>/instructions`) e o índice de **todas** as tools dos providers `loading.always`, a mesma forma de um turno normal, em vez de só as `pinned` (`index.js:174-177`). **Por que existe:** sem isso o turno seguinte reescreve o começo do bloco de capacidades (`index.js:176-177`). |
+| `mecanicaNoCatalogo` (0.2.0) | não | `false` | **O que é:** a mecânica de chamada sai do topo do system e passa a viver no bloco de capacidades, escrita pela estratégia de protocolo; no `nativo` o manual sai como `<function ref="…">` e não há seção de protocolo; o registro de operações do turno sai em forma neutra. Só com o layout `agrupado` (outro layout é recusado na montagem) (`index.js:143-145`, `CHANGELOG.md` 0.2.0). **Origem:** porta do Ariadne (`fc2457a8`, `b7bec589`). Desligada, o prompt é byte a byte o de antes. A justificativa do desenho não está registrada neste repositório, só a origem. |
 
 ### `CapacidadeDeclarada` (`capacidades.js`)
 
@@ -326,7 +357,7 @@ mudava um teste sequer).
 repassa a `manager.discover()` — a query deixa de ser reembedada quando o host manda o vetor. A
 fábrica (Task 11 da mesma série, commit `21cf2b88`) passou a embedar a pergunta **uma única vez** por
 turno (`executarTurno`) e a repassar o mesmo vetor aos dois `prepareTurn` do turno (inclusive o
-segundo, disparado pelo gancho `aoDescobrir`, ver bloco acima) via `entrada.vetoresDaPergunta` (vários
+segundo, disparado pelo gancho `aoDescobrir` — histórico: removido em 2026-09-20, ver bloco abaixo) via `entrada.vetoresDaPergunta` (vários
 vetores; `embeddingDaPergunta`, um vetor, continua aceito como nome antigo — vira
 `[embeddingDaPergunta]`). O retorno de `executarTurno` (e o `info` de `aoMontar`) ganhou
 `embeds: { quantos, ms, origem }` — `quantos` fica `0` quando o host manda o vetor pronto, contando o
@@ -370,6 +401,8 @@ caminho novo ainda não (detalhe de cada linha em
 | `callTool` para powers com `recebeCallTool` (ex.: `roteiros.executar_roteiro`) | Inoperante — o handler roda com `tools: null` (`turno.js`, comentário de `capacidadesDoTurno`) |
 | Jev decidindo prefetch executado e sugestão de próxima tool | Ainda fora do caminho novo (J6 da spec `2026-09-19-jev-pelo-gateway-e-decisor-da-fabrica-design.md`) |
 
+> **Histórico:** substituído pelos refinadores em 2026-09-20; passar `aoDescobrir` hoje lança `TypeError` (index.js, recusa no início de `criarOrquestrador`).
+
 **Atualização 2026-09-19 (mesmo dia, spec seguinte): o decisor do chat existe, atrás de flag.** A
 linha "Jev decidindo hidratação/prefetch/descoberta" desta tabela, na versão anterior deste
 documento, ficou desatualizada no mesmo dia em que foi escrita — spec
@@ -403,6 +436,7 @@ derruba o turno):
 2. `Selecao.incluidos` vira blocos `turn:context` na MENSAGEM do turno (`blocosDasFontes`).
 3. `Selecao.carregar` (ids de CAPACIDADE) promovido pelo MESMO mecanismo de `load_capability`
    (`comProvidersNoTurno`), ANTES do gancho do decisor (`aoDescobrir`, acima).
+   > **Histórico:** o gancho `aoDescobrir` citado neste passo foi substituído pelos refinadores em 2026-09-20; passar `aoDescobrir` hoje lança `TypeError` (index.js, recusa no início de `criarOrquestrador`).
 4. `Selecao.semear` (ids de SKILL, campo separado de `carregar`) aplicado por
    `config.aoSemear(ids, ctx)` — campo novo de `ConfigDoOrquestrador`, ligado no chat a
    `semearNaMemoriaDeTrabalho` (`packages/executor/src/orchestration/fabrica/turno.js`), que chama
@@ -606,3 +640,52 @@ próprio cabeçalho do arquivo como "o candidato natural a virar pacote próprio
 - **FEITO — Genos e Kairos continuam onde estão** (spec §2: "Ficam onde estão. Não são tocados nesta
   entrega") — a extração do orchestrator não implica extrair as duas dependências junto; ele
   continuaria consumindo-as como pacotes externos, exatamente como consome hoje.
+
+## 9. Orquestrador sem conversa (job)
+
+> Nenhuma spec do Igris trata o job como caso de desenho: o fluxo da fábrica nasceu para "mensagem +
+> contexto do turno". O Ariadne é o único host com jobs e prova a fronteira só em parte (insight do
+> Ariadne `docs/insights/2026-11-27-fabrica-desenho-e-o-ariadne.md`, §3). Esta seção registra o que a
+> fábrica faz e o que não faz quando o host roda um **job**: um turno com várias voltas do modelo e
+> nenhuma pessoa digitando. Referência de uso: a Pipeline V2 do Ariadne.
+
+**Como o host entrega a tarefa.** Não há mensagem de pessoa. O host passa o texto da tarefa em
+`entrada.texto` de `executarTurno` (`README.md`, exemplo mínimo; `index.js:2769-2775`). É esse texto
+que o ranking compara com as capacidades e que o kairos usa para decidir.
+
+**Quando a descoberta roda.** Uma vez, no início do turno: `aoIncluirConversa` é "chamado uma vez por
+turno, depois do discover" (`index.js:209-214`) e o `prepareTurn` do turno é um só; o refino por anel
+acontece dentro dele (§5, "Atualização 2026-09-20"). O único segundo `prepareTurn` que sobrou é o caso
+I3a — skill sugerida por uma fonte sem a capacidade `habilidades` carregada (§5). A regra de fundo é a
+decisão **S7** da série do Igris de 2026-09-19: "sem contribuições automáticas entre iterações do
+loop — nem todo modelo lida bem com contexto injetado no meio do turno"
+(`docs/superpowers/specs/2026-09-19-serie-contexto-do-turno-sobre-kairos-e-jev-design.md`, §5 "Decisões fixadas",
+linha S7). Na prática: depois que o turno começa, **a fábrica não troca o que o modelo vê
+entre uma volta e outra por conta própria**.
+
+**O que o agente faz dentro do job.** Carrega o que precisa pelo índice de capacidades e por
+`load_capability`, a meta-tool do kairos (`index.js:510`, `index.js:671`). Pedir é do modelo; trazer
+sozinho não é da fábrica. Duas consequências para o host:
+
+- **Turno trivial.** O texto da tarefa passa pela regra `isTrivial` do kairos; trivial pula o discover
+  e o embedding (`index.js:2769-2775`). O host que sabe que o job não é trivial pode dizer isso em
+  `entrada.trivial: false` (`index.js:2769`). Contribuição com `chaves` é relida mesmo no turno
+  trivial (`CHANGELOG.md` 0.2.5).
+- **Chaves do trabalho.** É o caminho natural do job: o host sabe o que o job vai tocar e entrega isso
+  em `chaves(ctx)` (§3), sem depender de ranking.
+
+**Catálogo fechado (tudo piso) funciona, mas paga tudo em todo job.** Com todas as capacidades em
+`piso: true` não há ranking, índice nem cartão; tudo chega com contrato desde a primeira volta (§4 e
+REGRAS §5). Os dois perfis de produção da época da cópia, `shadow-loop` e `agente-llm`, eram assim
+(§5, tabela "Já construído"). O custo é o limite já registrado em §7: o orçamento `limiteDeTools` conta
+funções, não tamanho, então um catálogo fechado grande põe todos os contratos no system de todo job. O
+`separarSystemVolatil` (§3) existe justamente para o cache entre jobs.
+
+**O que a fábrica NÃO cobre em job — é do host:**
+
+- dividir o trabalho em tarefas;
+- despachar subagentes ou rodadas em paralelo (o genos tem `spawnAgent`, o insight do Ariadne §3 o cita);
+- juntar os resultados;
+- walltime, orçamento, cancelamento, entrega e handoff — a fronteira de sempre (§2), por `decorarTool` e callbacks.
+
+A fábrica cobre **um turno**. O que acontece entre jobs é do host.
