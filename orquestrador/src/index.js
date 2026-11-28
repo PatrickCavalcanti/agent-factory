@@ -26,6 +26,7 @@ import { avisoDeDescartadas } from './despejo/aviso.js';
 import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas, funcoesDoJevDoTurno, funcoesDoJevDeclaradas } from './despejo/comportamento.js';
 import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
+import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
 import { montarContextoDeMemorias } from './memoria-do-loop.js';
@@ -159,6 +160,14 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   no turno (spec Igris 2026-11-25): `completo` (default) lista todas as funções com descrição; `funcoesSugeridas`
  *   só os nomes das funções que o anel `tool` marcou para o turno (até 5, pela nota); `nenhum` não manda o card
  *   (o modelo usa o índice). A legenda de `candidatos` acompanha o formato, salvo se o host passar a sua.
+ * @property {boolean | { cabecalho?: string, prioridade?: number }} [indiceDeCapacidades] Liga o ÍNDICE DE
+ *   CAPACIDADES (0.3.0): um bloco `<capability_index>` no system estável com uma linha por capacidade FORA do piso
+ *   (id, primeira frase da `descricao`, nome exato de cada função). É a rede de segurança da descoberta: o
+ *   ranking pode deixar uma capacidade fora do turno, o índice garante que o modelo sabe que ela existe e como
+ *   carregá-la. Calculado uma vez na montagem do catálogo (texto estável na sessão — bloco de cache). O formato
+ *   do cabeçalho segue `cartaoSugerido`; `cabecalho` o substitui por inteiro; `prioridade` (default
+ *   `prioridadeDasCapacidades - 0.5`, ou 49.5) é a posição no system e entra na validação de empate dos pisos.
+ *   Recusa na montagem (R9) quando não há nenhuma capacidade `piso: false` com função. Ver CAPACIDADES.md §11.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -1471,6 +1480,32 @@ export function criarOrquestrador(config) {
 
   let catalogo = null;
 
+  /**
+   * Contribuição do índice de capacidades (`config.indiceDeCapacidades`), ou `null` com o campo desligado.
+   * Recusa (R9) o índice ligado sem capacidade fora do piso: um bloco vazio ligado "de propósito" é
+   * esquecimento, e o modelo ficaria achando que a rede de segurança existe.
+   */
+  function contribuicaoDoIndice() {
+    const opcoes = config.indiceDeCapacidades;
+    if (!opcoes) return null;
+    const { cabecalho, prioridade } = typeof opcoes === 'object' ? opcoes : {};
+    const temForaDoPiso = config.capacidades.some(
+      (c) => c && c.piso === false && Array.isArray(c.tools) && c.tools.length > 0,
+    );
+    if (!temForaDoPiso) {
+      throw new Error(
+        'indiceDeCapacidades ligado sem capacidade fora do piso (`piso: false` com função): o índice '
+        + 'sairia vazio e o modelo acharia que a rede de segurança da descoberta existe. Desligue o campo '
+        + 'ou declare ao menos uma capacidade semântica.',
+      );
+    }
+    return contribuicaoDoIndiceDeCapacidades(config.capacidades, {
+      formato: cartaoSugerido,
+      cabecalho,
+      prioridade: prioridade ?? (config.prioridadeDasCapacidades ?? 50) - 0.5,
+    });
+  }
+
   function montarCatalogo() {
     if (catalogo) return catalogo;
     const promessa = (async () => {
@@ -1659,12 +1694,16 @@ export function criarOrquestrador(config) {
       // chaves que declaram — preenchidas no bloco abaixo, lidas por `executarTurno`.
       let comChave = [];
       let chavesDeclaradas = [];
-      if (config.contribuicoes?.length || pisoDasFontes.length) {
+      // O índice de capacidades entra junto das contribuições do host ANTES das validações, para a
+      // prioridade dele passar pela mesma checagem de empate.
+      const doIndice = contribuicaoDoIndice();
+      const contribuicoesDoHost = [...(config.contribuicoes ?? []), ...(doIndice ? [doIndice] : [])];
+      if (contribuicoesDoHost.length || pisoDasFontes.length) {
         // União ANTES de validar — as fontes entram no MESMO catálogo que `config.contribuicoes`,
         // então a validação abaixo (floor booleano, `volatil` obrigatório em piso, formato de
         // `ref` em semântica) precisa valer para as duas origens. Duplicar a validação por
         // origem reabriria a mesma lacuna que a validação única já fecha.
-        const todasContribuicoes = [...(config.contribuicoes ?? []), ...pisoDasFontes];
+        const todasContribuicoes = [...contribuicoesDoHost, ...pisoDasFontes];
 
         // VEM ANTES das demais, de propósito: uma contribuição sem `floor`
         // declarado como boolean (ausente, ou qualquer coisa que não seja
@@ -1824,7 +1863,7 @@ export function criarOrquestrador(config) {
       // união (`config.contribuicoes` + `pisoDasFontes`) que alimenta `pisoContribs`
       // acima — recomputada aqui porque `todasContribuicoes` é local ao bloco `if` e não
       // está no escopo deste ponto.
-      const refsVolateisDeclaradas = [...(config.contribuicoes ?? []), ...pisoDasFontes]
+      const refsVolateisDeclaradas = [...contribuicoesDoHost, ...pisoDasFontes]
         .filter((c) => c.floor === true && (c.volatil === true || c.chaves !== undefined))
         .map((c) => c.ref);
       // C3P: a FACHADA de manager (a que intercepta `discover` para publicar a seleção e,

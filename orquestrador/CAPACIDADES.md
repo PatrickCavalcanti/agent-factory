@@ -409,3 +409,43 @@ por mensagem, razão tokens/caractere, última chamada; `src/index.js:4039-4051`
 **O que isto não faz.** Não tira piso, não tira função isolada e não age com os interruptores desligados. Os
 números (`x`, `m`…) foram calibrados numa simulação do Igris em 29/10; a spec original dizia 5 e 3
 (`src/despejo/config.js:6-7`). Recalibrar para outro host é trabalho do host.
+
+## 11. Índice de capacidades (0.3.0)
+
+Isto vale para quem **declara capacidades semânticas** (`piso: false`) e liga `indiceDeCapacidades`
+(desligado por padrão: sem o campo, o prompt é byte a byte o de antes).
+
+**O problema.** Capacidade semântica só entra no turno se o ranking a escolher. Quando o ranking erra, o
+modelo não vê a capacidade, não sabe que ela existe e improvisa com outra função parecida. O erro é
+silencioso: nada falha, só sai uma resposta pior.
+
+**O que a fábrica faz.** Gera um bloco `<capability_index>` com uma linha por capacidade fora do piso:
+`- <id> — <primeira frase da descricao>. Funções: <nome exposto>, <nome exposto>`
+(`src/indice-de-capacidades.js`, `renderizarIndiceDeCapacidades`). Os nomes saem de `nomeExposto`, a mesma
+regra que o resto da fábrica usa (§5, "Nome exposto"), e respeitam `prefixarTools: false`. As capacidades saem
+ordenadas por id, para o texto não mudar de ordem. O cabeçalho do bloco ensina o modelo a carregar o manual
+da função pelo nome antes de chamá-la. Ele muda com `cartaoSugerido` (§ opções em `ARCHITECTURE.md` §3):
+com `funcoesSugeridas` diz que os cards trazem as funções sugeridas; com `nenhum` não fala de cards.
+
+**Estabilidade na sessão.** O texto é calculado uma vez, na montagem do catálogo, e vai num bloco
+`system:stable`, dentro do prefixo do cache. O cabeçalho `completo` **não muda um byte** — qualquer
+alteração quebra o cache de quem já o usa. Capacidade que vira piso no meio da sessão (por exemplo,
+depois de semear uma habilidade que a exige) continua listada até a próxima montagem: aceitamos a
+duplicação, nunca a perda. Custo medido no Igris: cerca de 8 mil caracteres para 33 capacidades. Com poucas
+capacidades o custo é pequeno; com muitas, o índice é o preço de a descoberta não depender do ranking.
+
+**Como o host liga.** `indiceDeCapacidades: true`, ou `{ cabecalho, prioridade }`:
+
+- `cabecalho` substitui o texto do formato (o host que quer escrever o dele).
+- `prioridade` é a posição no system. O padrão é `prioridadeDasCapacidades - 0.5` (49.5): logo antes do
+  bloco de capacidades, para o índice vir antes dos manuais que ele aponta. A prioridade entra na mesma
+  validação de empate dos pisos `system:*` que as contribuições do host: se um host tem outra contribuição em
+  49.5 e usa `chaves`, a montagem recusa o empate, em vez de estourar no meio da sessão.
+
+**O que isto não faz.** Não carrega capacidade nem manual — só anuncia. Não lista capacidade de piso
+(ela já aparece completa em `<capabilities>`). Não decide o que entra no turno: isso continua sendo do
+ranking, da carga por chave (§9.1, quando existir no host) e do decisor.
+
+**Por que mora na fábrica.** Era do Igris (spec `2026-10-19`) e ficou fora da extração por depender de
+coisas do Igris (`ORIGEM.md` D8). Dois hosts querem o mesmo bloco; o texto precisa casar com `nomeExposto`
+e com o formato do cartão, que são desta fábrica.

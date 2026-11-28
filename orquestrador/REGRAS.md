@@ -104,6 +104,16 @@ por chave isso acontece no meio da sessão (`src/chaves.js:48-52`).
   **em silêncio** pelo kairos (só um rastro no explain), e o host acreditaria ter entregue conteúdo
   que nunca chegou ao prompt (`src/chaves.js:99-128`; `src/index.js:82-88`).
 
+### Recusas da 0.3.0 — peças novas (só para quem liga o campo)
+
+Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o host não muda.
+
+- **R9 — `indiceDeCapacidades` ligado sem capacidade fora do piso.** A montagem recusa quando
+  nenhuma capacidade tem `piso: false` com ao menos uma função (`src/index.js:1488-1500`). O porquê: o
+  índice só lista capacidade que o ranking pode deixar de fora. Sem nenhuma, o bloco sairia vazio, e o
+  host acharia que a rede de segurança da descoberta existe sem ela existir. A recusa transforma
+  esquecimento em erro de montagem. Ver `CAPACIDADES.md` §11.
+
 ## Outras garantias do motor (não são recusa)
 
 ### Legenda do catálogo tem default
