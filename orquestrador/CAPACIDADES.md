@@ -373,12 +373,14 @@ semântico da capacidade. A chave é determinística; o ranking não é.
 **Rastro.** `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }`, o que cada
 chave do turno carregou (só com o campo configurado). É o "carregou pela chave X".
 
-**Chaves do turno.** Vêm de `chaves(ctx)`. Sem `chaves`, o turno tem **todas** as chaves do
-`catalogoDeChaves` (mesma regra das contribuições por chave) e o mapa inteiro carrega.
+**Chaves do turno.** Vêm de `chaves(ctx)`, que é **obrigatória** com `cargaPorChave`. Sem `chaves`, o turno
+teria **todas** as chaves do `catalogoDeChaves` (a regra das contribuições por chave) e o mapa inteiro
+carregaria em todo turno: a carga por chave viraria piso disfarçado. Por isso a montagem recusa.
 
 **O que a fábrica recusa na montagem (R10, `REGRAS.md`).** Chave fora de `catalogoDeChaves`; id que não é de uma
-capacidade declarada; lista vazia ou que não é lista; mapa sem `catalogoDeChaves`. Todas as mensagens vêm juntas
-num só erro. O porquê: nome errado nunca bateria com o turno, e a capacidade ficaria sem carregar, sem erro nenhum.
+capacidade declarada; lista vazia ou que não é lista; mapa sem `catalogoDeChaves`; mapa sem `chaves`. Todas as
+mensagens vêm juntas num só erro. O porquê: nome errado nunca bateria com o turno, e a capacidade ficaria sem
+carregar, sem erro nenhum.
 
 **Exemplo (Ariadne).** `cargaPorChave: { 'tela-mudada': ['olho'], migracao: ['migracao'] }`: um trabalho que
 muda tela já tem o olho carregado; um que mexe em cadastro com dados já tem a capacidade de migração.
@@ -545,7 +547,12 @@ guardava a lista no código dele). Quem usa as duas regras costuma pôr a capaci
 **Configuração.** Objeto, não variável de ambiente (a fábrica não lê `process.env`). `ativo: false`, no topo
 ou em `carregada`, só REGISTRA as decisões, sem rebaixar nem promover: é como o host mede antes de ligar.
 Valor inválido (cabeça fora de 0..1, z ≤ 0, lista que não é lista) **recusa a montagem** com o caminho do
-campo — o Igris avisava e ficava no padrão porque lia variável de ambiente.
+campo — o Igris avisava e ficava no padrão porque lia variável de ambiente. Também recusa (R11, `REGRAS.md`): o
+campo vazio (sem `carregada` nem `semanticasDoPiso`), e capacidade (em `semanticasDoPiso` ou `carregada.excluir`)
+ou função (em `semanticasDoPiso.<id>.funcoes`) que não existem em `config.capacidades`. Nome errado nunca
+casaria com ref nenhum e o corte ficaria desligado sem erro. **Corte `0` explícito é aceito**, como no Igris:
+é uma escolha de calibração (deixa tudo passar), e o que a recusa evita é o valor inválido (`''`, `null`,
+texto) virar `0` por coerção.
 
 **O que sai no rastro.** O retorno de `executarTurno` e o `aoMontar` trazem `corteDeFuncao`, a lista das decisões
 do turno. Cada uma: `regra` (`carregada` ou `semanticas-do-piso`), `chamada` (o anel `tool` pode ser

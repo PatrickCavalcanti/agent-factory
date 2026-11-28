@@ -113,6 +113,36 @@ export function normalizarCorte(obj = {}) {
 }
 
 /**
+ * Confere a config normalizada contra o catálogo, na montagem (R11, parte do catálogo). Devolve mensagens de recusa.
+ * - Vazio (sem `carregada` nem `semanticasDoPiso`): nenhuma regra roda, mas a fábrica ainda instalaria o embrulho do
+ *   refinador do anel `tool`, que responde antes do prazo do refinador do host — custo sem efeito.
+ * - Capacidade (em `semanticasDoPiso` ou `carregada.excluir`) ou função (em `semanticasDoPiso.<id>.funcoes`) que não
+ *   existem: a regra nunca casaria com ref nenhum e o corte ficaria desligado sem erro, como a carga por chave.
+ * @param {ReturnType<typeof normalizarCorte>} cortes
+ * @param {ReadonlyArray<{ id: string, tools?: ReadonlyArray<{ name: string }> }>} capacidades `config.capacidades`
+ * @returns {string[]}
+ */
+export function validarCorteDeFuncao(cortes, capacidades) {
+  const ids = Object.keys(cortes.porCapacidade);
+  if (!cortes.carregada && ids.length === 0) {
+    return ['corteDeFuncao vazio (sem `carregada` nem `semanticasDoPiso`): nenhuma regra roda, mas o refinador do anel `tool` seria embrulhado com o prazo cortado; declare uma regra ou remova o campo'];
+  }
+  const porId = new Map((capacidades ?? []).map((cap) => [cap.id, new Set((cap.tools ?? []).map((t) => t.name))]));
+  const erros = [];
+  for (const id of ids) {
+    const funcoes = porId.get(id);
+    if (!funcoes) { erros.push(`corteDeFuncao.semanticasDoPiso: capacidade desconhecida "${id}"`); continue; }
+    for (const f of cortes.porCapacidade[id].funcoes) {
+      if (!funcoes.has(f)) erros.push(`corteDeFuncao.semanticasDoPiso.${id}: função desconhecida "${f}"`);
+    }
+  }
+  for (const id of cortes.carregada?.excluir ?? []) {
+    if (!porId.has(id)) erros.push(`corteDeFuncao.carregada.excluir: capacidade desconhecida "${id}"`);
+  }
+  return erros;
+}
+
+/**
  * Aplica o corte das funções semânticas do piso à saída de um refinador do anel `tool`.
  *
  * @param {{ full: string[], candidates: string[], explain?: Record<string, any> }} saida

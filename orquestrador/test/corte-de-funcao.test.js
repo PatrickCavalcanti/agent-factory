@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aplicarCorteDeCarregada, aplicarCorteDeFuncao, normalizarCorte, embrulharRefinadorDeTool,
+  aplicarCorteDeCarregada, aplicarCorteDeFuncao, normalizarCorte, embrulharRefinadorDeTool, validarCorteDeFuncao,
   CORTE_CARREGADA_PADRAO, CORTE_SEMANTICAS_PADRAO, carregadasNoInicioDoTurno,
 } from '../src/corte-de-funcao.js';
 
@@ -42,6 +42,48 @@ test('normalizarCorte: valor inválido lança (nunca vira 0, que deixaria tudo p
   assert.throws(() => normalizarCorte({ semanticasDoPiso: { m: { funcoes: ['a'], campo: 'qualquer' } } }), /semanticasDoPiso\.m\.campo inválido/);
   assert.throws(() => normalizarCorte({ semanticasDoPiso: { m: 7 } }), /semanticasDoPiso\.m inválido/);
   assert.throws(() => normalizarCorte('x'), /inválido/);
+});
+
+test('normalizarCorte: corte 0 explícito é aceito (é o que o Igris aceitava); o que a recusa evita é o valor inválido virar 0', () => {
+  assert.equal(normalizarCorte({ semanticasDoPiso: { m: { funcoes: ['a'], corte: 0 } } }).porCapacidade.m.corte, 0);
+  assert.equal(normalizarCorte({ carregada: { cabeca: 0 } }).carregada.cabeca, 0);
+  // `''`, `null` e texto numérico viram 0 por coerção (`Number('')`): é isto que não pode passar em silêncio.
+  for (const ruim of ['', null, '0', 'abc']) {
+    assert.throws(() => normalizarCorte({ semanticasDoPiso: { m: { funcoes: ['a'], corte: ruim } } }), /m\.corte inválido/, String(ruim));
+  }
+});
+
+// --- conferência contra o catálogo (R11) ------------------------------------------------------------------
+
+const catalogoDeCapacidades = [
+  { id: 'memoria', tools: [{ name: 'mem_listar' }, { name: 'mem_remover' }] },
+  { id: 'agenda', tools: [{ name: 'listar' }] },
+];
+
+test('validarCorteDeFuncao: corte vazio (sem `carregada` nem `semanticasDoPiso`) é recusado, mesmo com `ativo: false`', () => {
+  for (const vazio of [{}, { ativo: false }, { carregada: false }, { semanticasDoPiso: {} }]) {
+    const erros = validarCorteDeFuncao(normalizarCorte(vazio), catalogoDeCapacidades);
+    assert.equal(erros.length, 1, JSON.stringify(vazio));
+    assert.match(erros[0], /corteDeFuncao vazio/);
+  }
+});
+
+test('validarCorteDeFuncao: capacidade ou função que não existem no catálogo são recusadas, todas juntas', () => {
+  const erros = validarCorteDeFuncao(normalizarCorte({
+    carregada: { excluir: ['memoria', 'fantasma'] },
+    semanticasDoPiso: { memoria: ['mem_listar', 'mem_inexistente'], outra: ['x'] },
+  }), catalogoDeCapacidades);
+  assert.equal(erros.length, 3, erros.join('|'));
+  assert.ok(erros.some((e) => /carregada\.excluir.*"fantasma"/.test(e)));
+  assert.ok(erros.some((e) => /semanticasDoPiso\.memoria.*"mem_inexistente"/.test(e)));
+  assert.ok(erros.some((e) => /semanticasDoPiso.*"outra"/.test(e)));
+});
+
+test('validarCorteDeFuncao: config coerente não recusa nada', () => {
+  assert.deepEqual(validarCorteDeFuncao(normalizarCorte({
+    carregada: { excluir: ['memoria'] }, semanticasDoPiso: { memoria: ['mem_listar'] },
+  }), catalogoDeCapacidades), []);
+  assert.deepEqual(validarCorteDeFuncao(normalizarCorte({ carregada: true }), catalogoDeCapacidades), []);
 });
 
 // --- corte da capacidade já carregada ---------------------------------------------------------------------
@@ -438,6 +480,21 @@ test('integração: `excluir` e `ativo: false` deixam a função full; o refinad
   }).executarTurno({ texto: TEXTO_NOTAS, estado: estadoCom(['notas']) });
   assert.equal(chamadas, 1, 'o refinador do host continua sendo chamado');
   assert.ok(!hidratadas(doHost).includes('notas/tool/listar'), 'e o corte vale sobre a saída dele');
+});
+
+test('integração (R11): corte vazio, capacidade e função inexistentes recusam a montagem', async () => {
+  await assert.rejects(
+    () => fabrica({ corteDeFuncao: {} }).executarTurno({ texto: TEXTO_NOTAS, estado: estadoCom([]) }),
+    /corteDeFuncao vazio/,
+  );
+  await assert.rejects(
+    () => fabrica({ corteDeFuncao: { carregada: { excluir: ['nao-existe'] } } }).executarTurno({ texto: TEXTO_NOTAS, estado: estadoCom([]) }),
+    /carregada\.excluir.*"nao-existe"/,
+  );
+  await assert.rejects(
+    () => fabrica({ corteDeFuncao: { semanticasDoPiso: { notas: ['listar', 'sumiu'] } } }).executarTurno({ texto: TEXTO_NOTAS, estado: estadoCom([]) }),
+    /semanticasDoPiso\.notas.*"sumiu"/,
+  );
 });
 
 test('integração: `corteDeFuncao` inválido recusa a montagem com a causa', async () => {

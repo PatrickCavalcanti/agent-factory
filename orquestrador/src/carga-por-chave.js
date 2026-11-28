@@ -9,13 +9,20 @@
  * @param {Record<string, string[]> | undefined} mapa
  * @param {readonly string[] | undefined} catalogo `config.catalogoDeChaves`
  * @param {ReadonlySet<string>} idsDasCapacidades ids de `config.capacidades`
+ * @param {boolean} temChaves o host declarou `config.chaves` (a função que diz as chaves do turno)
  * @returns {string[]}
  */
-export function validarCargaPorChave(mapa, catalogo, idsDasCapacidades) {
+export function validarCargaPorChave(mapa, catalogo, idsDasCapacidades, temChaves) {
   if (!mapa || Object.keys(mapa).length === 0) return [];
   // Sem catálogo, um erro de grafia na chave nunca bateria com chave nenhuma do turno: a carga ficaria
   // desligada sem erro nenhum. O catálogo faz o erro de nome aparecer na montagem.
-  if (!catalogo) return ['cargaPorChave exige catalogoDeChaves (sem ele um erro de nome na chave nunca apareceria)'];
+  const faltas = [];
+  if (!catalogo) faltas.push('cargaPorChave exige catalogoDeChaves (sem ele um erro de nome na chave nunca apareceria)');
+  // Sem `config.chaves`, o turno recebe o catálogo INTEIRO como chaves (`chavesDoTurno`, `index.js`): toda chave do
+  // mapa bateria em todo turno e a carga por chave viraria piso disfarçado — capacidade sempre carregada, sem
+  // ranking, pelo caminho que devia ser condicional.
+  if (!temChaves) faltas.push('cargaPorChave exige `chaves` (sem a função que diz as chaves do turno, todas as chaves do catálogo valem em todo turno e a carga vira piso disfarçado)');
+  if (faltas.length) return faltas;
   const conhecidas = new Set(catalogo);
   const erros = [];
   for (const [chave, lista] of Object.entries(mapa)) {

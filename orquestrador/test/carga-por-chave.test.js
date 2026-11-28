@@ -9,7 +9,7 @@ const ids = new Set(['olho', 'migracao', 'projeto']);
 const catalogo = ['tela-mudada', 'migracao', 'cadastro'];
 
 test('recusa chave fora do catálogo e id desconhecido', () => {
-  const erros = validarCargaPorChave({ 'tela-mudada': ['olho'], grafico: ['olho'], migracao: ['nao-existe'] }, catalogo, ids);
+  const erros = validarCargaPorChave({ 'tela-mudada': ['olho'], grafico: ['olho'], migracao: ['nao-existe'] }, catalogo, ids, true);
   assert.deepEqual(erros.sort(), [
     'cargaPorChave: chave "grafico" fora de catalogoDeChaves',
     'cargaPorChave: chave "migracao" aponta capacidade desconhecida "nao-existe"',
@@ -17,11 +17,24 @@ test('recusa chave fora do catálogo e id desconhecido', () => {
 });
 
 test('recusa mapa sem catalogoDeChaves', () => {
-  assert.match(validarCargaPorChave({ x: ['olho'] }, undefined, ids)[0], /exige catalogoDeChaves/);
+  assert.match(validarCargaPorChave({ x: ['olho'] }, undefined, ids, true)[0], /exige catalogoDeChaves/);
+});
+
+test('recusa mapa sem `config.chaves`: sem ela o turno recebe todo o catálogo e a carga vira piso disfarçado', () => {
+  const erros = validarCargaPorChave({ 'tela-mudada': ['olho'] }, catalogo, ids, false);
+  assert.equal(erros.length, 1);
+  assert.match(erros[0], /exige `chaves`/);
+  assert.match(erros[0], /piso/);
+  assert.deepEqual(validarCargaPorChave({ 'tela-mudada': ['olho'] }, catalogo, ids, true), []);
+});
+
+test('mapa sem catálogo e sem `chaves`: as duas mensagens', () => {
+  const erros = validarCargaPorChave({ x: ['olho'] }, undefined, ids, false);
+  assert.equal(erros.length, 2);
 });
 
 test('recusa lista vazia ou que não é lista', () => {
-  const erros = validarCargaPorChave({ 'tela-mudada': [], migracao: 'migracao' }, catalogo, ids);
+  const erros = validarCargaPorChave({ 'tela-mudada': [], migracao: 'migracao' }, catalogo, ids, true);
   assert.equal(erros.length, 2);
   assert.ok(erros.every((e) => /lista de ids de capacidade/.test(e)), erros.join('|'));
 });
@@ -128,14 +141,18 @@ test('sem `cargaPorChave`, o retorno e o `aoMontar` não ganham campo novo', asy
 
 test('recusa R10: chave fora do catálogo e capacidade desconhecida recusam a montagem, com as duas mensagens juntas', async () => {
   await assert.rejects(
-    () => fabrica({ cargaPorChave: { grafico: ['olho'], migracao: ['nao-existe'] } })
+    () => fabrica({ chaves: () => [], cargaPorChave: { grafico: ['olho'], migracao: ['nao-existe'] } })
       .executarTurno({ texto: 'x', estado: ESTADO_INICIAL }),
     (erro) => /chave "grafico" fora de catalogoDeChaves/.test(erro.message)
       && /capacidade desconhecida "nao-existe"/.test(erro.message),
   );
   await assert.rejects(
-    () => fabrica({ catalogoDeChaves: undefined, cargaPorChave: { migracao: ['migracao'] } })
+    () => fabrica({ chaves: () => [], catalogoDeChaves: undefined, cargaPorChave: { migracao: ['migracao'] } })
       .executarTurno({ texto: 'x', estado: ESTADO_INICIAL }),
     /exige catalogoDeChaves/,
+  );
+  await assert.rejects(
+    () => fabrica({ cargaPorChave: { migracao: ['migracao'] } }).executarTurno({ texto: 'x', estado: ESTADO_INICIAL }),
+    /cargaPorChave inválida: .*exige `chaves`/,
   );
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { criarOrquestrador } from '../src/index.js';
 import { systemVazio } from '../src/prompt-builder.js';
-import { conferirTetoDoSystem } from '../src/teto-do-system.js';
+import { conferirTetoDoSystem, validarTetoDoSystem } from '../src/teto-do-system.js';
 
 test('abaixo do teto: nada', () => {
   assert.equal(conferirTetoDoSystem('x'.repeat(10), { chars: 100 }), null);
@@ -21,6 +21,17 @@ test('teto ausente ou inválido não confere nada', () => {
   assert.equal(conferirTetoDoSystem('x'.repeat(150), {}), null);
   assert.equal(conferirTetoDoSystem('x'.repeat(150), { chars: 0 }), null);
   assert.equal(conferirTetoDoSystem('x'.repeat(150), { chars: Number.NaN }), null);
+});
+
+test('validarTetoDoSystem: ausente passa; presente exige `chars` inteiro > 0', () => {
+  assert.deepEqual(validarTetoDoSystem(undefined), []);
+  assert.deepEqual(validarTetoDoSystem({ chars: 1 }), []);
+  assert.deepEqual(validarTetoDoSystem({ chars: 120000 }), []);
+  for (const ruim of [{}, { chars: 0 }, { chars: -5 }, { chars: 1.5 }, { chars: '100' }, { chars: Number.NaN }, { chars: Infinity }, null, 100, 'x']) {
+    const erros = validarTetoDoSystem(ruim);
+    assert.equal(erros.length, 1, JSON.stringify(ruim));
+    assert.match(erros[0], /tetoDoSystem.*chars.*inteiro maior que 0/);
+  }
 });
 
 const ESTADO_KAIROS_VAZIO = { loadedProviders: [], consciousTools: [], hydratedTools: [], loadedSkills: [], recentUse: [] };
@@ -82,4 +93,14 @@ test('`aoEvento` que lança não derruba o turno nem some com o aviso em `render
     .executarTurno({ texto: 'qualquer coisa para fazer hoje', estado: ESTADO_INICIAL });
   assert.equal(turno.resultado.type, 'completed');
   assert.ok(turno.renderErrors.some((e) => e.ref === 'teto-do-system'));
+});
+
+test('`tetoDoSystem` inválido recusa a montagem (antes desligava o teto em silêncio)', async () => {
+  for (const ruim of [{}, { chars: 0 }, { chars: '100000' }, { chars: 1.5 }]) {
+    await assert.rejects(
+      () => fabrica({ tetoDoSystem: ruim }).executarTurno({ texto: 'qualquer coisa para fazer hoje', estado: ESTADO_INICIAL }),
+      /tetoDoSystem inválido/,
+      JSON.stringify(ruim),
+    );
+  }
 });

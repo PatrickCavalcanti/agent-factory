@@ -28,9 +28,9 @@ import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeri
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
 import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
 import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
-import { conferirTetoDoSystem } from './teto-do-system.js';
+import { conferirTetoDoSystem, validarTetoDoSystem } from './teto-do-system.js';
 import { registrarCasoDoTurno, refsPorNomeChamado } from './registro-de-casos.js';
-import { normalizarCorte, embrulharRefinadorDeTool, carregadasNoInicioDoTurno } from './corte-de-funcao.js';
+import { normalizarCorte, validarCorteDeFuncao, embrulharRefinadorDeTool, carregadasNoInicioDoTurno } from './corte-de-funcao.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
 import { montarContextoDeMemorias } from './memoria-do-loop.js';
@@ -173,18 +173,19 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   `prioridadeDasCapacidades - 0.5`, ou 49.5) é a posição no system e entra na validação de empate dos pisos.
  *   Recusa na montagem (R9) quando não há nenhuma capacidade `piso: false` com função. Ver CAPACIDADES.md §11.
  * @property {Record<string, string[]>} [cargaPorChave] CARGA POR CHAVE (0.3.0): mapa `chave → [ids de capacidade]`. A
- *   cada turno, as capacidades das chaves do turno (`chaves(ctx)`; sem `chaves`, todas as de `catalogoDeChaves`) entram
+ *   cada turno, as capacidades das chaves do turno (`chaves(ctx)`, obrigatória com o campo) entram
  *   carregadas — mesmo mecanismo do `carregar` das fontes (promoção no estado do kairos antes do primeiro
  *   `prepareTurn`), sem depender do ranking. É para o que o host sabe pelo trabalho (tela com relatório, pedido com
  *   anexos) e não deve depender de a frase do usuário casar. Recusa na montagem (R10): chave fora de
- *   `catalogoDeChaves`, id que não é de uma capacidade declarada, lista vazia, ou mapa sem `catalogoDeChaves`.
+ *   `catalogoDeChaves`, id que não é de uma capacidade declarada, lista vazia, mapa sem `catalogoDeChaves` ou sem
+ *   `chaves` (sem ela o turno recebe todo o catálogo e a carga viraria piso disfarçado).
  *   Com o campo, `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }` (o que cada
  *   chave carregou neste turno). Ver CAPACIDADES.md §9.1.
  * @property {{ chars: number }} [tetoDoSystem] TETO POR TAMANHO do system (0.3.0), em caracteres. `limiteDeTools` só
  *   conta tools; o system é append-only e pode crescer sem que nenhum limite de contagem dispare. Depois de montar o
  *   prompt, a fábrica mede `payload.system`; acima do teto acrescenta `{ ref: 'teto-do-system', error }` a
  *   `renderErrors` e chama `aoEvento({ tipo: 'fabrica:teto-do-system', turno, tamanho, teto })`. É AVISO: o turno
- *   completa. Ausente, nada é medido. Ver ARCHITECTURE.md §7.
+ *   completa. Ausente, nada é medido; `chars` que não é inteiro maior que 0 recusa a montagem. Ver ARCHITECTURE.md §7.
  * @property {(caso: object, insumos: { texto: string, ctx: any, operacoes: object[], discover: object, vetores: number[][] }) => void | Promise<void>} [aoRegistrarCaso]
  *   REGISTRO DE CASOS PARA TREINO (0.3.0). No fecho de cada turno NÃO trivial a fábrica monta o caso do turno com
  *   `montarCaso` (`@okds/agent-factory/decisoes/caso`) e o entrega aqui, a quem decide onde gravar. O caso leva o que a
@@ -216,7 +217,7 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *     `final` do Kairos ≥ 0,6). A forma de objeto troca `campo`/`corte`/`corteKairos` — os padrões foram
  *     calibrados pelo Igris com o embedder dele, e outro embedder exige medir de novo.
  *   `ativo: false` (no topo ou em `carregada`) só REGISTRA as decisões, sem rebaixar nem promover (para medir).
- *   Valor inválido recusa a montagem. Sem nota da cabeça (refinador degradado, ou nenhum refinador), vale só o z e
+ *   Valor inválido, campo vazio e capacidade ou função que não existem em `capacidades` recusam a montagem (R11). Sem nota da cabeça (refinador degradado, ou nenhum refinador), vale só o z e
  *   não promove. Com o campo, o retorno de `executarTurno` e o `aoMontar` trazem `corteDeFuncao`: as decisões do
  *   turno (`regra`, `chamada`, `ref`, `eraFull`, `passa`, notas, `ativo`, `promovida`) e o marcador
  *   `refinador: 'fallback:<motivo>'` quando o refinador do host falhou. Ver CAPACIDADES.md §12.
@@ -1635,14 +1636,18 @@ export function criarOrquestrador(config) {
       // não bateu" e a capacidade nunca seria carregada, sem erro nenhum.
       const errosDaCarga = validarCargaPorChave(
         config.cargaPorChave, config.catalogoDeChaves, new Set(config.capacidades.map((cap) => cap.id)),
+        typeof config.chaves === 'function',
       );
       if (errosDaCarga.length) {
         throw new Error(
           `cargaPorChave inválida: ${errosDaCarga.join('; ')}. A carga por chave só vale para chaves do `
-          + '`catalogoDeChaves` e ids de capacidades declaradas; um nome errado nunca bateria com o turno e a '
-          + 'capacidade ficaria sem carregar, sem erro nenhum.',
+          + '`catalogoDeChaves` e ids de capacidades declaradas, com `chaves` dizendo as do turno; um nome errado '
+          + 'nunca bateria com o turno e a capacidade ficaria sem carregar, sem erro nenhum.',
         );
       }
+      // Teto do system: valor inválido desligaria o teto em silêncio (`conferirTetoDoSystem` o ignora de propósito).
+      const errosDoTeto = validarTetoDoSystem(config.tetoDoSystem);
+      if (errosDoTeto.length) throw new Error(errosDoTeto.join('; '));
       // Gate de permissão por tool — chamado pelo kairos a cada discover
       // (rank/hydrate) e de novo aqui embaixo na ponte genos (`createGenosBridge`),
       // com a MESMA função: os dois precisam concordar, senão uma tool aparece
@@ -1697,6 +1702,10 @@ export function criarOrquestrador(config) {
       // anéis seguem o refinador cru do host. Sem o turno registrado no `ctx` (não deveria acontecer: todo
       // `prepareTurn` da fábrica leva o `ctx` do turno), o refinador do host segue como era.
       const corteNormalizado = config.corteDeFuncao ? normalizarCorte(config.corteDeFuncao) : null;
+      if (corteNormalizado) {
+        const errosDoCorte = validarCorteDeFuncao(corteNormalizado, config.capacidades);
+        if (errosDoCorte.length) throw new Error(`corteDeFuncao inválido: ${errosDoCorte.join('; ')}`);
+      }
       const refinadorDoHost = config.refinadores?.tool ?? null;
       const refinadoresDoManager = corteNormalizado
         ? {

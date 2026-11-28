@@ -116,17 +116,31 @@ Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o 
 
 - **R10 — `cargaPorChave` inválida.** A montagem recusa, com todas as mensagens num só erro: chave fora
   de `catalogoDeChaves`; id que não é de uma capacidade declarada; lista vazia ou que não é lista; mapa sem
-  `catalogoDeChaves` (`src/carga-por-chave.js`, chamado em `src/index.js` na montagem do catálogo). O
-  porquê: nome errado nunca bateria com as chaves do turno, e a capacidade ficaria sem carregar, sem erro
-  nenhum. Ver `CAPACIDADES.md` §9.1.
+  `catalogoDeChaves`; mapa sem `config.chaves` (`src/carga-por-chave.js`, chamado em `src/index.js` na
+  montagem do catálogo). O porquê: nome errado nunca bateria com as chaves do turno, e a capacidade ficaria
+  sem carregar, sem erro nenhum; e sem `chaves` o turno recebe o catálogo inteiro como chaves, então o mapa
+  todo carregaria em todo turno e a carga por chave viraria piso disfarçado. Ver `CAPACIDADES.md` §9.1.
 
 - **R11 — `corteDeFuncao` inválido.** A montagem recusa valor fora do domínio, com o caminho do campo
   na mensagem: `carregada.cabeca` e `corte`/`corteKairos` fora de 0..1, `carregada.z` que não é número
   maior que 0, `minFuncoes`/`maxPromovidas` que não são inteiros ≥ 1, `excluir`/`funcoes` que não são lista
   de textos, `campo` fora de `notaBase | notaCabeca | confidence` (`src/corte-de-funcao.js`,
-  `normalizarCorte`, chamado em `src/index.js` na montagem do catálogo). O porquê: o Igris avisava e ficava no
-  padrão porque lia variável de ambiente; num objeto de config isso esconderia o erro, e um corte `0`
-  deixaria tudo passar, promovendo até 3 funções por capacidade em todo turno. Ver `CAPACIDADES.md` §12.
+  `normalizarCorte`, chamado em `src/index.js` na montagem do catálogo). Também recusa, contra o catálogo
+  (`validarCorteDeFuncao`): campo **vazio** (sem `carregada` nem `semanticasDoPiso`); capacidade em
+  `semanticasDoPiso` ou `carregada.excluir` que não está em `config.capacidades`; função em
+  `semanticasDoPiso.<id>.funcoes` que a capacidade não tem. O porquê: o Igris avisava e ficava no padrão
+  porque lia variável de ambiente; num objeto de config isso esconderia o erro (um valor inválido virando `0`
+  por coerção deixaria tudo passar, promovendo até 3 funções por capacidade em todo turno). Um `0`
+  **explícito** é válido, como era no Igris (`v >= 0 && v <= 1`): é calibração do host, para medir ou
+  afrouxar; o que não passa é `''`, `null` ou texto. Nome de capacidade ou função errado nunca casaria com
+  ref nenhum e o corte ficaria desligado sem erro; o campo vazio instalaria o embrulho do refinador do anel
+  `tool`, que responde antes do prazo do Kairos, sem cortar nada. Ver `CAPACIDADES.md` §12.
+
+- **`tetoDoSystem` inválido.** A montagem recusa `tetoDoSystem` cujo `chars` não é inteiro maior que 0
+  (`'100000'`, `0`, `1.5`, objeto sem `chars`) (`src/teto-do-system.js`, `validarTetoDoSystem`, chamado em
+  `src/index.js` na montagem do catálogo). O porquê: `conferirTetoDoSystem` ignora teto inválido de
+  propósito (defesa na medição), e sem a recusa quem digitou o valor errado ficaria sem teto e sem aviso.
+  O teto em si continua sendo aviso, não recusa (`ARCHITECTURE.md` §3).
 
 ## Outras garantias do motor (não são recusa)
 
