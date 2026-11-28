@@ -145,6 +145,48 @@ test('gancho assíncrono que rejeita: não é aguardado e o erro também vai a r
   assert.ok(saida.renderErrors.some((e) => e.ref === 'registro-de-casos' && /gravação lenta falhou/.test(e.error)));
 });
 
+test('gancho assíncrono que rejeita depois do retorno: o erro também sai por `aoEvento` (fabrica:registro-de-casos), em try/catch', async () => {
+  let rejeitar;
+  const pendente = new Promise((_, rej) => { rejeitar = rej; });
+  const eventos = [];
+  const orq = fabrica({
+    aoRegistrarCaso: () => pendente,
+    aoEvento: (e) => { eventos.push(e); throw new Error('handler quebrado'); },
+  });
+  const saida = await orq.executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.equal(saida.resultado.type, 'completed');
+  assert.ok(!eventos.some((e) => e.tipo === 'fabrica:registro-de-casos'), 'nada emitido enquanto a promessa está pendente');
+  rejeitar(new Error('gravação lenta falhou'));
+  await new Promise((r) => setImmediate(r));
+  const evento = eventos.find((e) => e.tipo === 'fabrica:registro-de-casos');
+  assert.ok(evento, JSON.stringify(eventos));
+  assert.match(evento.erro, /gravação lenta falhou/);
+  assert.ok(saida.renderErrors.some((e) => e.ref === 'registro-de-casos'), 'renderErrors continua recebendo');
+});
+
+test('erro síncrono do gancho NÃO emite evento (já está em renderErrors, que o host vê no retorno)', async () => {
+  const eventos = [];
+  await fabrica({ aoRegistrarCaso: () => { throw new Error('banco fora'); }, aoEvento: (e) => eventos.push(e) })
+    .executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.ok(!eventos.some((e) => e.tipo === 'fabrica:registro-de-casos'));
+});
+
+test('sem `aoRegistrarCaso`, os argumentos do caso nem são calculados (refs por nome, conjunto de capacidades ativas)', async () => {
+  let lidos = 0;
+  const capacidades = [{
+    id: 'agenda',
+    descricao: 'Consulta a agenda.',
+    get tools() { lidos += 1; return [{ name: 'listar', description: 'Lista itens.', schema: z.object({}).passthrough(), handler: async () => ({ itens: [] }) }]; },
+  }];
+  const saida = await fabrica({ capacidades }).executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.equal(saida.resultado.type, 'completed');
+  const semGancho = lidos;
+  lidos = 0;
+  await fabrica({ capacidades, aoRegistrarCaso: () => {} }).executarTurno({ texto: TEXTO, estado: ESTADO_INICIAL });
+  assert.ok(lidos > 0);
+  assert.ok(semGancho < lidos, `com gancho lê mais (${lidos}) do que sem (${semGancho})`);
+});
+
 test('`dadosDoCaso` que lança também cai em renderErrors e o turno completa', async () => {
   const casos = [];
   const orq = fabrica({ aoRegistrarCaso: (caso) => casos.push(caso), dadosDoCaso: () => { throw new Error('sem trace'); } });

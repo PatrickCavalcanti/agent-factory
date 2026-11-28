@@ -111,6 +111,20 @@ test('a chave do turno carrega a capacidade do mapa, sem depender do ranking; as
   assert.deepEqual(turno.cargaPorChave, { 'tela-mudada': ['olho'] });
 });
 
+test('o que a chave carregou fica em `cargaPorChave` e NÃO em `promocoes.fontes` (rastro de fonte é de fonte)', async () => {
+  const infos = [];
+  const orq = fabrica({
+    chaves: () => ['tela-mudada'],
+    cargaPorChave: { 'tela-mudada': ['olho'] },
+    aoMontar: (info) => infos.push(info),
+  });
+  const turno = await orq.executarTurno({ texto: 'qualquer coisa que não fala de nada disso', estado: ESTADO_INICIAL });
+  assert.deepEqual(turno.cargaPorChave, { 'tela-mudada': ['olho'] });
+  assert.deepEqual(turno.promocoes.fontes, []);
+  assert.deepEqual(infos[0].promocoes.fontes, []);
+  assert.ok(infos[0].capacidadesAcumuladas.some((c) => c.id === 'olho'), 'a carga em si continua valendo');
+});
+
 test('turno trivial: a chave é calculada e publicada igual; a capacidade carrega no primeiro turno com discover (como o `carregar` das fontes)', async () => {
   const infos = [];
   const orq = fabrica({

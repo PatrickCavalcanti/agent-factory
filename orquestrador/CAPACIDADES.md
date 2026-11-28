@@ -371,7 +371,9 @@ importam; num pedido com anexos, os anexos. Nada disso deve depender de a frase 
 semântico da capacidade. A chave é determinística; o ranking não é.
 
 **Rastro.** `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }`, o que cada
-chave do turno carregou (só com o campo configurado). É o "carregou pela chave X".
+chave do turno carregou (só com o campo configurado). É o "carregou pela chave X". O que a chave carregou
+**não** entra em `promocoes.fontes` (o rastro do `carregar` das fontes): os dois caminhos usam o mesmo
+mecanismo, mas o rastro diz qual deles foi.
 
 **Chaves do turno.** Vêm de `chaves(ctx)`, que é **obrigatória** com `cargaPorChave`. Sem `chaves`, o turno
 teria **todas** as chaves do `catalogoDeChaves` (a regra das contribuições por chave) e o mapa inteiro

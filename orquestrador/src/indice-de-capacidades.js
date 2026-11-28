@@ -45,13 +45,23 @@ export function cabecalhoDoIndice(formato = 'completo') {
 const porId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /**
+ * "Capacidade fora do piso com função": a que o índice lista (`piso: false` e ao menos uma tool). É o critério único
+ * do que o índice mostra e do que a recusa R9 conta — se os dois divergissem, a recusa deixaria passar (ou barraria)
+ * um índice vazio.
+ * @param {{ piso?: boolean, tools?: unknown[] } | null | undefined} c
+ */
+export function foraDoPisoComFuncao(c) {
+  return Boolean(c) && c.piso === false && Array.isArray(c.tools) && c.tools.length > 0;
+}
+
+/**
  * @param {Array<object>} [capacidades] `CapacidadeDeclarada[]`
  * @param {{ formato?: 'completo'|'funcoesSugeridas'|'nenhum', cabecalho?: string }} [opcoes]
  *   `cabecalho` substitui o texto padrão do formato (o host que escreve o próprio).
  * @returns {string} '' quando nenhuma capacidade está fora do piso
  */
 export function renderizarIndiceDeCapacidades(capacidades = [], { formato = 'completo', cabecalho } = {}) {
-  const fora = capacidades.filter((c) => c && c.piso === false && Array.isArray(c.tools) && c.tools.length > 0);
+  const fora = capacidades.filter(foraDoPisoComFuncao);
   if (!fora.length) return '';
   const linhas = [...fora].sort(porId).map((c) => {
     const nomes = c.tools.map((t) => nomeExposto(c.id, t.name, { prefixar: c.prefixarTools !== false }));

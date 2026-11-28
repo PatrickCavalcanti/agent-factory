@@ -26,7 +26,7 @@ import { avisoDeDescartadas } from './despejo/aviso.js';
 import { separarPreparadas, conteudoDaHabilidadeSugerida, ofertaDoTurno, saidaDoComportamento, notaDeNaoFixadas, funcoesDoJevDoTurno, funcoesDoJevDeclaradas } from './despejo/comportamento.js';
 import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeridas, legendaDoCartao } from './cartao-sugerido.js';
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
-import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
+import { contribuicaoDoIndiceDeCapacidades, foraDoPisoComFuncao } from './indice-de-capacidades.js';
 import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
 import { conferirTetoDoSystem, validarTetoDoSystem } from './teto-do-system.js';
 import { registrarCasoDoTurno, refsPorNomeChamado } from './registro-de-casos.js';
@@ -1546,9 +1546,7 @@ export function criarOrquestrador(config) {
     const opcoes = config.indiceDeCapacidades;
     if (!opcoes) return null;
     const { cabecalho, prioridade } = typeof opcoes === 'object' ? opcoes : {};
-    const temForaDoPiso = config.capacidades.some(
-      (c) => c && c.piso === false && Array.isArray(c.tools) && c.tools.length > 0,
-    );
+    const temForaDoPiso = config.capacidades.some(foraDoPisoComFuncao);
     if (!temForaDoPiso) {
       throw new Error(
         'indiceDeCapacidades ligado sem capacidade fora do piso (`piso: false` com função): o índice '
@@ -3321,9 +3319,11 @@ export function criarOrquestrador(config) {
     // Carga por chave (0.3.0): as capacidades das chaves do turno entram como as do `carregar` das fontes —
     // na MESMA união, antes do primeiro `prepareTurn`, então valem inclusive no turno trivial (as chaves não
     // dependem do texto). `cargaPorChave` foi conferida na montagem: todo id é de capacidade declarada.
-    for (const id of cargaDoTurno?.ids ?? []) promocoesDasFontes.add(id);
-    const estadoKairosDoTurno = promocoesDasFontes.size
-      ? { ...estadoAnterior.kairos, loadedProviders: [...new Set([...estadoAnterior.kairos.loadedProviders, ...promocoesDasFontes])] }
+    // `promocoesDasFontes` fica só com o que as FONTES pediram: o rastro `promocoes.fontes` é de fonte, e o que a chave
+    // carregou já sai em `cargaPorChave`. O que vai ao estado (e ao espaço do loop) é a união das duas.
+    const promocoesDoTurno = new Set([...promocoesDasFontes, ...(cargaDoTurno?.ids ?? [])]);
+    const estadoKairosDoTurno = promocoesDoTurno.size
+      ? { ...estadoAnterior.kairos, loadedProviders: [...new Set([...estadoAnterior.kairos.loadedProviders, ...promocoesDoTurno])] }
       : estadoAnterior.kairos;
 
     // `operacoes`/`avisar` — movidos para ANTES do `try` (Task 15, loop do Jev, spec
@@ -3550,7 +3550,7 @@ export function criarOrquestrador(config) {
         const capacidadesDaIntencao = (entrada.intencaoAnterior ?? []).map((i) => i?.capacidade).filter((id) => typeof id === 'string');
         const espaco = espacoDoLoop({
           capacidades: config.capacidades,
-          carregadas: capacidadesDoLoop({ explain: prepared.discoverResult.explain, promocoes: promocoesSkills, capacidades: config.capacidades, deFontes: [...promocoesDasFontes] }),
+          carregadas: capacidadesDoLoop({ explain: prepared.discoverResult.explain, promocoes: promocoesSkills, capacidades: config.capacidades, deFontes: [...promocoesDoTurno] }),
           candidatas: [...new Set([...idsCandidatos, ...capacidadesDaIntencao])],
           paramsDe,
           autorizacoes,
@@ -4841,13 +4841,18 @@ export function criarOrquestrador(config) {
 
       // Registro de casos para treino (0.3.0): só com `config.aoRegistrarCaso`, só em turno não trivial, fire-and-forget.
       // Depois de `operacoes` e do discover finais; o erro do gancho vai a `renderErrors` (mesmo array do retorno).
-      registrarCasoDoTurno({
-        config, ctx, texto: entrada.texto, trivial: trivialDoTurno === true, vetores, operacoes,
-        discover: prepared.discoverResult,
-        ativasNoInicio: [...new Set(estadoKairosDoTurno.loadedProviders)],
-        refsPorNome: refsPorNomeChamado(config.capacidades, sinonimosDoCatalogo.porCru, nomeExposto),
-        renderErrors,
-      });
+      // Os argumentos custam (varrem o catálogo, copiam o conjunto de capacidades): só se calculam com o gancho e em
+      // turno não trivial. `registrarCasoDoTurno` repete as duas guardas por ser chamável de fora.
+      if (typeof config.aoRegistrarCaso === 'function' && trivialDoTurno !== true) {
+        registrarCasoDoTurno({
+          config, ctx, texto: entrada.texto, trivial: false, vetores, operacoes,
+          discover: prepared.discoverResult,
+          ativasNoInicio: [...new Set(estadoKairosDoTurno.loadedProviders)],
+          refsPorNome: refsPorNomeChamado(config.capacidades, sinonimosDoCatalogo.porCru, nomeExposto),
+          renderErrors,
+          aoEvento: config.aoEvento,
+        });
+      }
 
       return {
         resultado,

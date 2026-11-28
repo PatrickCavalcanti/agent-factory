@@ -30,6 +30,11 @@ export function refsPorNomeChamado(capacidades, sinonimosCrus, nomeExposto) {
  * gancho (síncrona ou promessa rejeitada) vira `{ ref: 'registro-de-casos', error }` em `renderErrors` — observabilidade
  * do host não derruba o turno. O gancho NÃO é aguardado (fire-and-forget): promessa pendente não segura o retorno.
  *
+ * Duas saídas para o erro. `renderErrors` é lido pelo host no retorno do turno, então só serve para o que falha ANTES do
+ * retorno (síncrono). A rejeição TARDIA da promessa do gancho acontece depois que o host já leu o array: lá, o erro
+ * só chega a quem está ouvindo, por `aoEvento({ tipo: 'fabrica:registro-de-casos', erro })` (em try/catch: handler que
+ * lança não vira rejeição solta). O erro síncrono NÃO emite o evento: já está em `renderErrors`.
+ *
  * @param {object} p
  * @param {{ aoRegistrarCaso?: Function, dadosDoCaso?: Function }} p.config
  * @param {object} p.ctx
@@ -41,11 +46,21 @@ export function refsPorNomeChamado(capacidades, sinonimosCrus, nomeExposto) {
  * @param {string[]} p.ativasNoInicio capacidades já ativas quando o turno começou (`loadedProviders` do estado dado ao 1º discover)
  * @param {Map<string, string>} p.refsPorNome ver `refsPorNomeChamado`
  * @param {Array<{ref: string, error: string}>} p.renderErrors
+ * @param {(evento: object) => void} [p.aoEvento] `config.aoEvento`
  * @param {() => Date} [p.agora]
  */
-export function registrarCasoDoTurno({ config, ctx, texto, trivial, vetores, operacoes, discover, ativasNoInicio, refsPorNome, renderErrors, agora = () => new Date() }) {
+export function registrarCasoDoTurno({ config, ctx, texto, trivial, vetores, operacoes, discover, ativasNoInicio, refsPorNome, renderErrors, aoEvento, agora = () => new Date() }) {
   if (typeof config.aoRegistrarCaso !== 'function' || trivial) return;
-  const falhou = (erro) => renderErrors.push({ ref: 'registro-de-casos', error: String(erro?.message ?? erro) });
+  const mensagem = (erro) => String(erro?.message ?? erro);
+  const falhou = (erro) => renderErrors.push({ ref: 'registro-de-casos', error: mensagem(erro) });
+  const falhouTarde = (erro) => {
+    falhou(erro);
+    try {
+      aoEvento?.({ tipo: 'fabrica:registro-de-casos', erro: mensagem(erro) });
+    } catch {
+      // engolido de propósito — mesma garantia do `fabrica:catalogo-mudo`: handler de log não vira rejeição solta.
+    }
+  };
   try {
     const dados = (typeof config.dadosDoCaso === 'function' ? config.dadosDoCaso(ctx) : null) ?? {};
     const operacoesResolvidas = (operacoes ?? []).map((op) => {
@@ -67,7 +82,7 @@ export function registrarCasoDoTurno({ config, ctx, texto, trivial, vetores, ope
       kairos: kairosDoExplain(discover?.explain),
     });
     const retorno = config.aoRegistrarCaso(caso, { texto, ctx, operacoes, discover, vetores: vetores ?? [] });
-    if (retorno && typeof retorno.then === 'function') retorno.then(undefined, falhou);
+    if (retorno && typeof retorno.then === 'function') retorno.then(undefined, falhouTarde);
   } catch (erro) {
     falhou(erro);
   }

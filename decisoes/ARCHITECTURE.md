@@ -119,7 +119,7 @@ abaixo), versionada ao lado do código que ela mede.
 ### De onde vem o caso (gancho `aoRegistrarCaso` da fábrica, 0.3.0)
 
 `montarCaso` (`treino/lib/caso.js`) não é chamada só pelo treino do host: a fábrica a chama no fecho de cada turno não trivial
-(`orquestrador/src/registro-de-casos.js`) e entrega o caso a `config.aoRegistrarCaso`. Ela monta com o que tem na mão: vetores da
+(`orquestrador/src/registro-de-casos.js`) e entrega o caso a `config.aoRegistrarCaso`. Erro do gancho: o síncrono vai a `renderErrors`; a rejeição tardia da promessa também sai por `aoEvento({ tipo: 'fabrica:registro-de-casos', erro })`. Ela monta com o que tem na mão: vetores da
 consulta, operações (nome chamado resolvido para `capacidade/tool/função`), `kairosDoExplain(discover.explain)` e `ativasNoInicio`
 (`loadedProviders` do estado do primeiro discover). **O que só o host completa**, por `config.dadosDoCaso(ctx)`: `selecao`
 (`{ decisoes, sombras }`, o trace do decisor local — é a fonte de `carregadas`, e sem ela a triagem devolve `sem-selecao`),

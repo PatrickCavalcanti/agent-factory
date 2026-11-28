@@ -156,3 +156,14 @@ test('o índice participa da validação de empate de prioridade dos pisos syste
     /mesma prioridade \(49\.5\)/,
   );
 });
+
+test('foraDoPisoComFuncao: o critério único do índice e da recusa R9', async () => {
+  const { foraDoPisoComFuncao } = await import('../src/indice-de-capacidades.js');
+  assert.equal(foraDoPisoComFuncao({ piso: false, tools: [{ name: 'a' }] }), true);
+  assert.equal(foraDoPisoComFuncao({ piso: true, tools: [{ name: 'a' }] }), false);
+  assert.equal(foraDoPisoComFuncao({ tools: [{ name: 'a' }] }), false, 'piso ausente conta como piso');
+  assert.equal(foraDoPisoComFuncao({ piso: false, tools: [] }), false);
+  assert.equal(foraDoPisoComFuncao({ piso: false }), false);
+  assert.equal(foraDoPisoComFuncao(null), false);
+  assert.equal(foraDoPisoComFuncao(undefined), false);
+});
