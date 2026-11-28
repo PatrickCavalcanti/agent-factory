@@ -116,6 +116,21 @@ abaixo), versionada ao lado do código que ela mede.
 `linha-sinal.js` não têm subpath: são das CLIs (`treino/*.mjs`), que os importam por caminho relativo; `conferencia.js` é do serviço
 (`servico.js`) e da CLI. As duas CLIs (`treinar.mjs`, `conferencia.mjs`) são **estritas**: ver a tabela de `treino/lib/` abaixo (`args.js`).
 
+### De onde vem o caso (gancho `aoRegistrarCaso` da fábrica, 0.3.0)
+
+`montarCaso` (`treino/lib/caso.js`) não é chamada só pelo treino do host: a fábrica a chama no fecho de cada turno não trivial
+(`orquestrador/src/registro-de-casos.js`) e entrega o caso a `config.aoRegistrarCaso`. Ela monta com o que tem na mão: vetores da
+consulta, operações (nome chamado resolvido para `capacidade/tool/função`), `kairosDoExplain(discover.explain)` e `ativasNoInicio`
+(`loadedProviders` do estado do primeiro discover). **O que só o host completa**, por `config.dadosDoCaso(ctx)`: `selecao`
+(`{ decisoes, sombras }`, o trace do decisor local — é a fonte de `carregadas`, e sem ela a triagem devolve `sem-selecao`),
+`embedderSlug` (sem ele, `sem-slug`), `sessionId`/`interactionId`/`origem` e `guardarTexto` (padrão: o texto não é guardado). Duas coisas
+que o Igris faz sobre o caso depois do `montarCaso` e que a fábrica **não** faz: tirar o piso do turno (`tirarPiso`, precisa de
+`pisoIds`/`fixasIds`) e contar a capacidade promovida por skill (`promocoes.skills`, `promovidasPorSkill`); o host que quiser a mesma
+triagem refaz o caso a partir do 2º argumento (`insumos`) ou completa o objeto antes de gravar. `triar`/`conferir` seguem do treino:
+a fábrica não os chama. **Onde fica o caso:** é do host — no Igris, uma linha no registro em arquivo (`treino-continuo.js`); no Ariadne,
+o banco, pelo rastro do turno. O caso existe para treinar o decisor local do host com uso real; a fábrica só o monta porque é ela que
+tem o `discover` e as operações do turno.
+
 ### `src/local/` — composição, cortes fixos, índice e cabeça (spec 2026-10-07 de cortes e composição)
 
 Tudo atrás do contrato `RingRefiner` do kairos (nada muda em cards, promoções P1–P7 nem no loop).

@@ -29,6 +29,7 @@ import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } 
 import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
 import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
 import { conferirTetoDoSystem } from './teto-do-system.js';
+import { registrarCasoDoTurno, refsPorNomeChamado } from './registro-de-casos.js';
 import { normalizarCorte, embrulharRefinadorDeTool, carregadasNoInicioDoTurno } from './corte-de-funcao.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
@@ -184,6 +185,20 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   prompt, a fábrica mede `payload.system`; acima do teto acrescenta `{ ref: 'teto-do-system', error }` a
  *   `renderErrors` e chama `aoEvento({ tipo: 'fabrica:teto-do-system', turno, tamanho, teto })`. É AVISO: o turno
  *   completa. Ausente, nada é medido. Ver ARCHITECTURE.md §7.
+ * @property {(caso: object, insumos: { texto: string, ctx: any, operacoes: object[], discover: object, vetores: number[][] }) => void | Promise<void>} [aoRegistrarCaso]
+ *   REGISTRO DE CASOS PARA TREINO (0.3.0). No fecho de cada turno NÃO trivial a fábrica monta o caso do turno com
+ *   `montarCaso` (`@okds/agent-factory/decisoes/caso`) e o entrega aqui, a quem decide onde gravar. O caso leva o que a
+ *   fábrica tem: vetores da consulta, funções chamadas (nome exposto resolvido para `capacidade/tool/função`), sinal do
+ *   kairos (`discover.explain`) e `ativasNoInicio` (o `loadedProviders` do estado dado ao primeiro discover). Fire-and-
+ *   forget: promessa não é aguardada; exceção (ou rejeição) vira `{ ref: 'registro-de-casos', error }` em `renderErrors`
+ *   e o turno completa. O 2º argumento traz os insumos crus para o host refazer ou completar o caso. Turno trivial não
+ *   registra. Ausente, nada é montado. Ver `decisoes/ARCHITECTURE.md` e CAPACIDADES.md.
+ * @property {(ctx: any) => { sessionId?: string, interactionId?: string, origem?: 'chat'|'fundo'|'debug'|'bancada', guardarTexto?: boolean, embedderSlug?: string, selecao?: { decisoes?: object, sombras?: object[] }, ativasNoInicio?: string[] }} [dadosDoCaso]
+ *   O que SÓ o host tem para o caso (lido a cada turno, só com `aoRegistrarCaso`): a decisão do decisor local por anel
+ *   (`selecao`, a forma de `serializarSelecao` de `decisoes/local`: sem ela o caso fica sem `carregadas` e a triagem o
+ *   marca `sem-selecao`), o slug do embedder que gerou o vetor (sem ele, `sem-slug`), sessão/interação/origem e se o
+ *   texto pode ser guardado (padrão: não). `ativasNoInicio` aqui vence o da fábrica (use quando o trace do refinador
+ *   o capturou). Exceção aqui também vai a `renderErrors` e o turno não registra caso.
  * @property {{ carregada?: boolean | { ativo?: boolean, cabeca?: number, z?: number, minFuncoes?: number, maxPromovidas?: number, excluir?: string[] }, semanticasDoPiso?: Record<string, string[] | { funcoes: string[], campo?: string, corte?: number, corteKairos?: number }>, ativo?: boolean }} [corteDeFuncao]
  *   CORTE DE FUNÇÃO no anel `tool` (0.3.0). No anel `tool` o Kairos propõe `full` (manual completo no prompt) para toda
  *   função com nota ≥ 0,15 e o refinador do host nunca rebaixa essa proposta; o Igris mediu 197 manuais no system
@@ -4814,6 +4829,16 @@ export function criarOrquestrador(config) {
         const { comportamentoAnterior: _descartado, comportamentoFalhasNoFecho: _descartadas, ...resto } = estadoDoDespejoNovo;
         estadoDoDespejoNovo = resto;
       }
+
+      // Registro de casos para treino (0.3.0): só com `config.aoRegistrarCaso`, só em turno não trivial, fire-and-forget.
+      // Depois de `operacoes` e do discover finais; o erro do gancho vai a `renderErrors` (mesmo array do retorno).
+      registrarCasoDoTurno({
+        config, ctx, texto: entrada.texto, trivial: trivialDoTurno === true, vetores, operacoes,
+        discover: prepared.discoverResult,
+        ativasNoInicio: [...new Set(estadoKairosDoTurno.loadedProviders)],
+        refsPorNome: refsPorNomeChamado(config.capacidades, sinonimosDoCatalogo.porCru, nomeExposto),
+        renderErrors,
+      });
 
       return {
         resultado,
