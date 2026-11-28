@@ -28,6 +28,7 @@ import { formatoDoCartao, funcoesSugeridasDaCapacidade, conteudoComFuncoesSugeri
 import { montarProviders, toolsExpostas, sinonimosCrus, tudoPiso, nomeExposto } from './capacidades.js';
 import { contribuicaoDoIndiceDeCapacidades } from './indice-de-capacidades.js';
 import { validarCargaPorChave, capacidadesDaCarga } from './carga-por-chave.js';
+import { conferirTetoDoSystem } from './teto-do-system.js';
 import { resolverProtocolo } from './protocolo/index.js';
 import { espacoDoLoop, entregaDoLoop, capacidadesDoLoop, falhaDoResultado, refsAcompanhantes, refsDaIntencao } from './loop-do-turno.js';
 import { montarContextoDeMemorias } from './memoria-do-loop.js';
@@ -177,6 +178,11 @@ const ID_AVISO_DE_PRAZO = 'aviso-de-prazo';
  *   `catalogoDeChaves`, id que não é de uma capacidade declarada, lista vazia, ou mapa sem `catalogoDeChaves`.
  *   Com o campo, `aoMontar` e o retorno de `executarTurno` trazem `cargaPorChave: { [chave]: [ids] }` (o que cada
  *   chave carregou neste turno). Ver CAPACIDADES.md §9.1.
+ * @property {{ chars: number }} [tetoDoSystem] TETO POR TAMANHO do system (0.3.0), em caracteres. `limiteDeTools` só
+ *   conta tools; o system é append-only e pode crescer sem que nenhum limite de contagem dispare. Depois de montar o
+ *   prompt, a fábrica mede `payload.system`; acima do teto acrescenta `{ ref: 'teto-do-system', error }` a
+ *   `renderErrors` e chama `aoEvento({ tipo: 'fabrica:teto-do-system', turno, tamanho, teto })`. É AVISO: o turno
+ *   completa. Ausente, nada é medido. Ver ARCHITECTURE.md §7.
  * @property {object} [nomes] Nomes das tags do prompt, quando o host quiser outro vocabulário.
  * @property {'agrupado'|'diario'|'lista-fixa'} [layoutDasCapacidades] Repassado ao prompt-builder (ver
  *   `ConfiguracaoDoPrompt.layoutDasCapacidades`). Default `'agrupado'`.
@@ -4193,6 +4199,24 @@ export function criarOrquestrador(config) {
       tempos.catalogo + tempos.discoverInicial.total + tempos.fontesMemoria + tempos.loop
       + tempos.promocao + tempos.prepareTurnAcumulacao + tempos.montagemDoPrompt
     );
+
+    // Teto por tamanho do system (0.3.0): só avisa. O aviso entra em `renderErrors` ANTES do `aoMontar`, para o
+    // host que grava o turno o ver junto do payload; o evento é metadado externo e, como `catalogo-mudo`, um
+    // handler que lança não pode derrubar o turno.
+    const excessoDoSystem = conferirTetoDoSystem(payload.system, config.tetoDoSystem);
+    if (excessoDoSystem) {
+      renderErrors.push(excessoDoSystem);
+      try {
+        config.aoEvento?.({
+          tipo: 'fabrica:teto-do-system',
+          turno: estadoAnterior.turno,
+          tamanho: String(payload.system ?? '').length,
+          teto: config.tetoDoSystem.chars,
+        });
+      } catch {
+        // engolido de propósito — mesma garantia do `fabrica:catalogo-mudo`.
+      }
+    }
 
     // Emite o payload MONTADO deste turno — uma vez, logo depois de
     // `construtor.montar(...)`. Dois consumidores: o tracer do orquestrador de
