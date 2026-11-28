@@ -315,13 +315,13 @@ O que interessa aqui é `fonte.selecionar`: uma função da própria capacidade 
 
 1. A fábrica chama `fonte.selecionar(ctx, { vetor1, embedar, capacidadesCarregadas })` de cada capacidade
    com fonte, em paralelo, com prazo próprio (`prazoDaFonteMs`, 800 ms; fonte lenta ou que lança entra sem
-   seleção e nunca derruba o turno) (`src/index.js:2860-2870`; JSDoc de `prazoDaFonteMs`, `src/index.js:441-446`).
+   seleção e nunca derruba o turno) (`src/index.js:3016-3026`; JSDoc de `prazoDaFonteMs`, `src/index.js:503-508`).
 2. A função devolve uma `Selecao`. O campo `carregar` é uma lista de **ids de capacidade**.
 3. A fábrica junta os ids conhecidos (id desconhecido não promove e sai em `renderErrors`:
-   `src/index.js:2931-2940`) e os põe em `loadedProviders` do **estado do kairos**, antes do primeiro
-   `prepareTurn` do turno (`src/index.js:3163-3165`; a chamada está em `src/index.js:3198-3202`). Não há
+   `src/index.js:3087-3096`) e os põe em `loadedProviders` do **estado do kairos**, antes do primeiro
+   `prepareTurn` do turno (`src/index.js:3324-3327`; a chamada está em `src/index.js:3360-3364`). Não há
    segundo `prepareTurn` por causa disso: o id em `loadedProviders` é hidratado (índice e instruções) no mesmo
-   `discover()`, como um provider carregado num turno anterior (`src/index.js:3151-3158`).
+   `discover()`, como um provider carregado num turno anterior (`src/index.js:3307-3314`).
 
 **O que chega com a capacidade.** Carregar a capacidade traz as funções `fixa` dela — o mínimo, que chega
 com manual (§4; `ARCHITECTURE.md` §4: `pinned` hidrata sempre que o provider carrega). O resto das funções
@@ -341,7 +341,7 @@ A decisão do dono foi tornar isso determinístico, sem depender da nota (spec d
 **Por que mora na fábrica, e não no host.** O ponto de entrada é o estado do kairos antes do primeiro
 `prepareTurn`, e esse estado é da fábrica. Promover depois custaria um segundo `discover()`: era o que o
 antigo passo das fontes e o gancho `aoDescobrir` faziam, e a spec de refinadores (R10) removeu
-(`src/index.js:3151-3160`; §6.1).
+(`src/index.js:3305-3314`; §6.1).
 
 **Quando usar.** Quando o host conhece uma regra que não depende do que o ranking acha. O Igris usa para
 URL na mensagem; o chat do Dev Mode do Ariadne usa para `anexos` e `relatorio` (`carregarQuando` traduzido
@@ -409,7 +409,7 @@ cerca de 161 mil entraram sem nunca ser usadas (spec do Igris
   **mensagem do turno** (a cauda), não para o system. O system só recebe o que já estava nele, o piso e o
   promovido (`src/despejo/cauda.js:1-2`, `separarCauda`). A legenda diz ao modelo que as funções da cauda
   podem ser chamadas agora; as que ele usar passam a ficar no contexto fixo e as que não usar saem em breve
-  (`LEGENDA_CAUDA_PADRAO`, `src/despejo/cauda.js:7`).
+  (`LEGENDA_CAUDA_PADRAO`, `src/despejo/cauda.js:6`).
 - **Só o que o modelo usou sobe ao system.** Uso = função que o **modelo executou** com sucesso, mais o que
   ele carregou por `load_capability` (`usadasDoTurno`, `src/despejo/costura.js:99-108`). Função recusada não
   conta (`usosDoTurno`, `src/despejo/registro-de-uso.js:8-20`; `CHANGELOG.md` 0.2.1). A execução do Jev não
@@ -424,14 +424,14 @@ cerca de 161 mil entraram sem nunca ser usadas (spec do Igris
 - **Capacidade ociosa sai inteira (`despejo.despejo`).** Capacidade do system sem uso há mais de `x`
   mensagens (padrão 8) vira descartável e sai **em lote**, quando a conta do cache compensa
   (`r × D × H ≥ (w − r) × S`: o ganho de não pagar o texto parado contra o custo de reescrever o prefixo do
-  cache) **ou, sem fazer a conta, quando a pausa desde a última chamada ao modelo chega a `pausaMin` minutos (motivo `pausa`; `src/index.js:4051`;
+  cache) **ou, sem fazer a conta, quando a pausa desde a última chamada ao modelo chega a `pausaMin` minutos (motivo `pausa`; `src/index.js:4211`;
   o cache provavelmente já esfriou) ou não há system anterior (motivo `sem-cache`)** (`src/despejo/conta.js:30-33`;
-  `src/despejo/conta.js:1-38`; `src/despejo/registro-de-uso.js:60-79`). **Função não sai sozinha**:
+  `src/despejo/conta.js:1-38`; `src/despejo/registro-de-uso.js:60-78`). **Função não sai sozinha**:
   enquanto a capacidade fica, nenhum manual dela é marcado, só a capacidade inteira ociosa
   (`src/despejo/registro-de-uso.js:60-64`). `sticky: true` e `sessionBehavior.evictAfterIdleTurns: null`
   impedem o despejo; um número em `evictAfterIdleTurns` troca o `x` daquela capacidade
-  (`src/index.js:4019-4026`).
-- **Piso nunca sai** (`src/despejo/registro-de-uso.js:60-64`; `src/index.js:1410-1411`).
+  (`src/index.js:4181-4188`).
+- **Piso nunca sai** (`src/despejo/registro-de-uso.js:60-64`; `src/index.js:1472-1473`).
 - **O que saiu é avisado, e a volta exige convicção.** O aviso `<descartadas>` lista só o que já foi usado e
   manda carregar de volta com `load_capability` (`src/despejo/aviso.js`). Capacidade descartada, ou que
   passou `m` mensagens (padrão 2) na cauda sem uso, só volta à cauda com **sinal forte** da seleção:
@@ -444,8 +444,8 @@ cerca de 161 mil entraram sem nunca ser usadas (spec do Igris
 
 **Por que mora na fábrica.** O acumulador do prompt, o estado do kairos e a medição do cache são daqui; a
 decisão de "o que sai do system" e "o que o cache perde" usa os três ao mesmo tempo
-(`src/index.js:4019-4066`). O host entrega só as medidas do cache (`entrada.medidasDoCache`: modelo, chamadas
-por mensagem, razão tokens/caractere, última chamada; `src/index.js:4039-4051`).
+(`src/index.js:4181-4228`). O host entrega só as medidas do cache (`entrada.medidasDoCache`: modelo, chamadas
+por mensagem, razão tokens/caractere, última chamada; `src/index.js:4201-4213`).
 
 **O que isto não faz.** Não tira piso, não tira função isolada e não age com os interruptores desligados. Os
 números (`x`, `m`…) foram calibrados numa simulação do Igris em 29/10; a spec original dizia 5 e 3

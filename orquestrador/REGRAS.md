@@ -60,7 +60,7 @@ de recalcular um conteúdo que nunca chegaria a renderizar de qualquer forma).
 `false` é resposta; silêncio não é — `montarCatalogo` recusa a montagem e
 nomeia o `ref` que falta (`src/index.js`). **Exceção:** contribuição com `chaves`
 não declara `volatil` — ela é volátil por definição, e o valor declarado, se vier,
-é ignorado (`src/index.js:90`; `CHANGELOG.md` 0.2.5). Quando o discover é pulado por texto
+é ignorado (`src/index.js:95`; `CHANGELOG.md` 0.2.5). Quando o discover é pulado por texto
 trivial, só o volátil é recalculado — o resto é reexibido como estava
 (`refsVolateisDeclaradas`, unida com `config.refsVolateis` no ponto de uso).
 
@@ -75,15 +75,15 @@ valor novo. Pode confiar nos dois sentidos, não só no de recalcular.
 
 Cada uma vale só para quem usa o mecanismo: sem `chaves` em nenhuma contribuição, nada disto
 roda e o host não muda (`CHANGELOG.md` 0.2.5; `src/chaves.js:60`). A montagem chama as três
-conferências em ordem — forma e nome, prioridade, refs semânticos (`src/index.js:1732`,
-`src/index.js:1741`, `src/index.js:1752`) — e recusa antes de o turno rodar. O porquê de cada recusa está no item; o argumento "o erro só
+conferências em ordem — forma e nome, prioridade, refs semânticos (`src/index.js:1870`,
+`src/index.js:1879`, `src/index.js:1890`) — e recusa antes de o turno rodar. O porquê de cada recusa está no item; o argumento "o erro só
 apareceria no meio da sessão, quando a chave entrasse" vale **só para a colisão de `priority`**:
 ela estoura no `acumular` quando os dois blocos têm conteúdo ao mesmo tempo, e com contribuição
 por chave isso acontece no meio da sessão (`src/chaves.js:48-52`).
 
 - **`chaves` só vale em contribuição de piso (`floor: true`).** Chave é o critério do piso; a
   contribuição `floor: false` já tem o dela, a relevância pelo canal de conversa
-  (`src/chaves.js:24`; `src/index.js:110-117`).
+  (`src/chaves.js:24`; `src/index.js:115-122`).
 - **`chaves: []` é recusado.** Lista vazia nunca bate (`some` sobre lista vazia dá falso:
   `src/chaves.js:8-12`), então a contribuição jamais entraria. Para "entra sempre", omita o campo
   (`src/chaves.js:25`).
@@ -102,14 +102,14 @@ por chave isso acontece no meio da sessão (`src/chaves.js:48-52`).
   `chave/<kind>/<origem>.<id>` com três segmentos, único entre si e sem colidir com os refs já
   ocupados no canal de conversa. O porquê: item de conversa com `ref` fora do formato é rejeitado
   **em silêncio** pelo kairos (só um rastro no explain), e o host acreditaria ter entregue conteúdo
-  que nunca chegou ao prompt (`src/chaves.js:99-128`; `src/index.js:82-88`).
+  que nunca chegou ao prompt (`src/chaves.js:99-128`; `src/index.js:87-93`).
 
 ### Recusas da 0.3.0 — peças novas (só para quem liga o campo)
 
 Cada uma vale só para quem liga o campo correspondente: sem ele, nada roda e o host não muda.
 
 - **R9 — `indiceDeCapacidades` ligado sem capacidade fora do piso.** A montagem recusa quando
-  nenhuma capacidade tem `piso: false` com ao menos uma função (`src/index.js:1529-1541`). O porquê: o
+  nenhuma capacidade tem `piso: false` com ao menos uma função (`src/index.js:1550-1556`). O porquê: o
   índice só lista capacidade que o ranking pode deixar de fora. Sem nenhuma, o bloco sairia vazio, e o
   host acharia que a rede de segurança da descoberta existe sem ela existir. A recusa transforma
   esquecimento em erro de montagem. Ver `CAPACIDADES.md` §11.
@@ -298,7 +298,7 @@ o card de sempre), `funcoesSugeridas` e `nenhum`.
 
 - **Valor fora dos três é recusado.** `cartaoSugerido` diferente de `completo`, `funcoesSugeridas`
   ou `nenhum` lança `cartaoSugerido inválido: "<valor>" (use …)` na montagem do orquestrador, antes
-  do turno (`src/cartao-sugerido.js:13-15`; chamada em `src/index.js:1387`). Ausente ou `null` vale
+  do turno (`src/cartao-sugerido.js:13-15`; chamada em `src/index.js:1449`). Ausente ou `null` vale
   `completo`.
 
 - **`funcoesSugeridas`:** o card traz só os nomes das funções que o anel `tool` marcou para o
