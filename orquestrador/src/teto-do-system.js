@@ -13,7 +13,7 @@
  * @returns {string[]}
  */
 export function validarTetoDoSystem(teto) {
-  if (teto === undefined) return [];
+  if (teto === undefined || teto === null) return []; // null vale como ausente (host que monta a config com `campo ?? null`)
   if (teto !== null && typeof teto === 'object' && Number.isInteger(teto.chars) && teto.chars > 0) return [];
   return [`tetoDoSystem inválido: \`chars\` precisa ser um inteiro maior que 0 (recebido ${JSON.stringify(teto)}); com valor inválido o teto ficaria desligado em silêncio`];
 }

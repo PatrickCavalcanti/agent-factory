@@ -25,9 +25,10 @@ test('teto ausente ou inválido não confere nada', () => {
 
 test('validarTetoDoSystem: ausente passa; presente exige `chars` inteiro > 0', () => {
   assert.deepEqual(validarTetoDoSystem(undefined), []);
+  assert.deepEqual(validarTetoDoSystem(null), []);
   assert.deepEqual(validarTetoDoSystem({ chars: 1 }), []);
   assert.deepEqual(validarTetoDoSystem({ chars: 120000 }), []);
-  for (const ruim of [{}, { chars: 0 }, { chars: -5 }, { chars: 1.5 }, { chars: '100' }, { chars: Number.NaN }, { chars: Infinity }, null, 100, 'x']) {
+  for (const ruim of [{}, { chars: 0 }, { chars: -5 }, { chars: 1.5 }, { chars: '100' }, { chars: Number.NaN }, { chars: Infinity }, 100, 'x']) {
     const erros = validarTetoDoSystem(ruim);
     assert.equal(erros.length, 1, JSON.stringify(ruim));
     assert.match(erros[0], /tetoDoSystem.*chars.*inteiro maior que 0/);

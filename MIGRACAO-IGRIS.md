@@ -73,7 +73,9 @@ corteDeFuncao: {
   ativo: !desligado(env.IGRIS_CORTE_MEMORIA),            // top-level = regra das semânticas do piso
   semanticasDoPiso: {
     memoria: {
-      funcoes: FUNCOES_SEMANTICAS_DO_PISO.memoria,       // fabrica/capacidades-do-piso.js (fica no Igris)
+      funcoes: FUNCOES_SEMANTICAS_DO_PISO.memoria,       // fabrica/capacidades-do-piso.js (fica no Igris); cada nome
+                                                         // tem de existir em capacidades.memoria.tools (a R11 recusa
+                                                         // função inexistente) — as 11 de hoje existem (conferido 2026-11-27)
       campo, corte, corteKairos,                         // IGRIS_CORTE_MEMORIA_CAMPO / _NOTA / _KAIROS; omitir = padrão
     },
   },
